@@ -186,6 +186,9 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
         <span id="sidebar-email" style="font-family:'DM Sans',sans-serif;font-size:10px;color:rgba(232,210,138,0.6);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px"></span>
         <button onclick="signOut()" style="background:transparent;border:none;color:#7A8694;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:9px;text-transform:uppercase;letter-spacing:0.08em;padding:0;white-space:nowrap;flex-shrink:0">Sign Out</button>
       </div>
+      <div id="sidebar-reset-row" style="display:none;margin-top:4px">
+        <button onclick="resetGovEdgeAccountData()" style="background:transparent;border:none;color:#7A8694;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:9px;text-transform:uppercase;letter-spacing:0.08em;padding:0;white-space:nowrap" title="Permanently delete all saved data on this account and start over">Reset My Data</button>
+      </div>
     </div>
     <nav class="sidebar-nav">
       <div class="nav-section-label">Foundation</div>
@@ -487,14 +490,50 @@ function updateUserUI() {
   if (currentUser) {
     var row = document.getElementById('sidebar-user-row');
     var emailEl = document.getElementById('sidebar-email');
+    var resetRow = document.getElementById('sidebar-reset-row');
     if (row) row.style.display = 'flex';
     if (emailEl) emailEl.textContent = currentUser.email;
+    if (resetRow) resetRow.style.display = 'block';
   }
 }
 
 async function signOut() {
   localStorage.removeItem('ge_sb_token'); localStorage.removeItem('ge_sb_uid'); localStorage.removeItem('ge_sb_email');
   currentUser = null; location.reload();
+}
+
+async function resetGovEdgeAccountData() {
+  if (!currentUser) { showToast('Please sign in first.'); return; }
+  var confirm1 = window.confirm('This will permanently delete every saved output, assessment result, and document on your GovEdge AI account — including anything currently showing in the app — and cannot be undone.\n\nUse this if your account is showing information that does not belong to you (for example, carried over from a different app), or if you want to start completely fresh.\n\nContinue?');
+  if (!confirm1) return;
+  var confirmText = window.prompt('Type RESET (in capital letters) to confirm permanent deletion of all your saved GovEdge AI data.');
+  if (confirmText !== 'RESET') { showToast('Reset cancelled — nothing was deleted.'); return; }
+
+  showToast('Deleting your saved data — this may take a moment...');
+  try {
+    var token = await getValidToken();
+    if (token) {
+      await fetch(SB_URL+'/rest/v1/govedge_data?user_id=eq.'+currentUser.id,{
+        method:'DELETE',
+        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token}
+      });
+    }
+  } catch(e) {
+    console.warn('Cloud data deletion failed:', e.message);
+  }
+
+  // Clear every local key this app uses, regardless of prefix, so nothing stale survives
+  try {
+    var keysToRemove = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && (k.indexOf('ge_') === 0 || k === LS_KEY)) keysToRemove.push(k);
+    }
+    keysToRemove.forEach(function(k){ localStorage.removeItem(k); });
+  } catch(e) {}
+
+  showToast('\u2713 Your data has been reset. Reloading...');
+  setTimeout(function(){ location.reload(); }, 1200);
 }
 
 async function saveToCloud(key, value) {
@@ -852,7 +891,8 @@ function receiveAssessmentResult(text, scores) {
 }
 
 function renderAgent0() {
-  var isDone = !!(STATE.assessmentResult || (STATE.savedOutputs && STATE.savedOutputs['0']));
+  var hasRealScores = !!(STATE.assessmentScores && STATE.assessmentScores[1] && STATE.assessmentScores[2] && STATE.assessmentScores[3] && STATE.assessmentScores[4]);
+  var isDone = !!(hasRealScores || STATE.savedOutputs && STATE.savedOutputs['0']);
   var html = '<div class="context-panel"><span class="context-icon">◆</span><div class="context-text"><strong>Agent 1 — Career Capital Assessment.</strong> This is the non-negotiable foundation of your entire search. The Career Capital Assessment Suite measures your distinctive value across twenty executive leadership dimensions, grouped into four instruments — Strategic Vision, Financial Acumen, Talent Leadership, Execution, Stakeholder Influence, Communication, Analytics, Change Leadership, Collaboration, Adaptive Learning, Integrity, Results Drive, People-Centered Values, Visionary Leadership, Servant Leadership, Self-Awareness, Emotional Regulation, Empathy, Relationship Management, and Resilience. The Career Capital Summary this generates is the precision document that every subsequent agent uses as its primary input.<br><br>Why it matters: Most GovCon executives cannot articulate their distinctive value with the precision that cleared staffing recruiters and hiring managers require. They describe what they have done rather than what they are uniquely positioned to deliver — including the contract vehicle experience, clearance level, and program credentials that actually differentiate them in this market. The Career Capital Summary closes that gap with specific, defensible language for every positioning conversation your search requires.<br><br>What to do: Complete all four assessment modules honestly based on how you actually operate. Do not proceed to Agent 2 until your summary is generated, reviewed, and saved.</div></div>';
   html += '<div class="gateway-section"><div class="gateway-header"><span class="gateway-step-badge">Step 1</span><span class="gateway-header-text">Complete Your Career Capital Assessment</span></div><div class="gateway-body">';
   html += '<div class="gateway-desc">Your assessment covers four instruments across 100 items and 20 dimensions. It runs entirely inside this app. When you finish, your results are sent to Agent 1 automatically.</div>';
@@ -4598,6 +4638,7 @@ function scoreLabel(pct) {
 }
 
 function buildScoreSummary() {
+  if (!STATE.assessmentScores || typeof STATE.assessmentScores !== 'object') return null;
   var s1=STATE.assessmentScores[1], s2=STATE.assessmentScores[2],
       s3=STATE.assessmentScores[3], s4=STATE.assessmentScores[4];
   if (!s1||!s2||!s3||!s4) return null;
