@@ -301,10 +301,10 @@ window.addEventListener('error', function(event) {
   }
 
   try {
-    var errLog = JSON.parse(localStorage.getItem('ee_errors') || '[]');
+    var errLog = JSON.parse(localStorage.getItem('ge_errors') || '[]');
     errLog.push({v:APP_VERSION,msg:msg,src:src,line:line,u:currentUser?currentUser.email:'anon',t:new Date().toISOString()});
     if (errLog.length > 20) errLog = errLog.slice(-20);
-    localStorage.setItem('ee_errors', JSON.stringify(errLog));
+    localStorage.setItem('ge_errors', JSON.stringify(errLog));
   } catch(e) {}
 });
 
@@ -324,7 +324,7 @@ var OPTIONAL_AGENT_ORDER = ['6e','6f','6g'];
 function isMainAgentId(id){ return MAIN_AGENT_ORDER.indexOf(id) > -1; }
 function getProgressAgentTotal(){ return MAIN_AGENT_ORDER.length; }
 (function() {
-  var stored = localStorage.getItem('ee_version');
+  var stored = localStorage.getItem('ge_version');
   var sessionSeen = sessionStorage.getItem('ee_ver_seen');
   if (stored && stored !== APP_VERSION && !sessionSeen) {
     var banner = document.createElement('div');
@@ -345,7 +345,7 @@ function getProgressAgentTotal(){ return MAIN_AGENT_ORDER.length; }
     document.body.prepend(banner);
   }
   sessionStorage.setItem('ee_ver_seen', '1');
-  localStorage.setItem('ee_version', APP_VERSION);
+  localStorage.setItem('ge_version', APP_VERSION);
 })();
 
 (function() {
@@ -373,7 +373,7 @@ var currentUser = null;
 
 async function sbFetch(path, method, body) {
   method = method || 'GET';
-  var token = localStorage.getItem('sb_token') || SB_KEY;
+  var token = localStorage.getItem('ge_sb_token') || SB_KEY;
   var opts = {
     method: method,
     headers: {'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+token,'Prefer':method==='POST'?'resolution=merge-duplicates,return=minimal':''}
@@ -419,9 +419,9 @@ async function authSignIn() {
     var uemail = d.user ? d.user.email : (d.email||email);
     if (!uid) throw new Error('Could not retrieve user ID.');
     currentUser = {id:uid,email:uemail,token:d.access_token};
-    localStorage.setItem('sb_token',d.access_token);
-    localStorage.setItem('sb_uid',uid);
-    localStorage.setItem('sb_email',uemail);
+    localStorage.setItem('ge_sb_token',d.access_token);
+    localStorage.setItem('ge_sb_uid',uid);
+    localStorage.setItem('ge_sb_email',uemail);
     document.getElementById('auth-modal').remove();
     updateUserUI();
     await loadCloudData();
@@ -445,9 +445,9 @@ async function authSignUp() {
     var uemail = d.user ? d.user.email : (d.email||email);
     if (d.access_token && uid) {
       currentUser = {id:uid,email:uemail,token:d.access_token};
-      localStorage.setItem('sb_token',d.access_token);
-      localStorage.setItem('sb_uid',uid);
-      localStorage.setItem('sb_email',uemail);
+      localStorage.setItem('ge_sb_token',d.access_token);
+      localStorage.setItem('ge_sb_uid',uid);
+      localStorage.setItem('ge_sb_email',uemail);
       document.getElementById('auth-modal').remove();
       updateUserUI();
       await loadCloudData();
@@ -460,9 +460,9 @@ async function authSignUp() {
         var uemail2 = d2.user ? d2.user.email : (d2.email||email);
         if (d2.access_token && uid2) {
           currentUser = {id:uid2,email:uemail2,token:d2.access_token};
-          localStorage.setItem('sb_token',d2.access_token);
-          localStorage.setItem('sb_uid',uid2);
-          localStorage.setItem('sb_email',uemail2);
+          localStorage.setItem('ge_sb_token',d2.access_token);
+          localStorage.setItem('ge_sb_uid',uid2);
+          localStorage.setItem('ge_sb_email',uemail2);
           document.getElementById('auth-modal').remove();
           updateUserUI();
           await loadCloudData();
@@ -493,12 +493,12 @@ function updateUserUI() {
 }
 
 async function signOut() {
-  localStorage.removeItem('sb_token'); localStorage.removeItem('sb_uid'); localStorage.removeItem('sb_email');
+  localStorage.removeItem('ge_sb_token'); localStorage.removeItem('ge_sb_uid'); localStorage.removeItem('ge_sb_email');
   currentUser = null; location.reload();
 }
 
 async function saveToCloud(key, value) {
-  try { localStorage.setItem('ee_'+key, value); } catch(e) {}
+  try { localStorage.setItem('ge_'+key, value); } catch(e) {}
   if (!currentUser) return;
   try {
     var token = await getValidToken();
@@ -515,9 +515,9 @@ async function loadCloudData() {
     var r = await fetch(SB_URL+'/rest/v1/govedge_data?user_id=eq.'+currentUser.id,{headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token}});
     var rows = await r.json();
     // Read local state BEFORE overwriting with cloud rows
-    var stateStr = localStorage.getItem('ee_app_state');
+    var stateStr = localStorage.getItem('ge_app_state');
     // Also check for dedicated assessment scores key saved separately
-    var localScoresStr = localStorage.getItem('ee_assessment_scores');
+    var localScoresStr = localStorage.getItem('ge_assessment_scores');
     // Map from cloud data_key to STATE.savedOutputs key
     var keyMap = {
       'output_0':'0','output_0.75':'0.75','output_0b':'0b','output_0c':'0c',
@@ -546,7 +546,7 @@ async function loadCloudData() {
     };
     if (Array.isArray(rows)) {
       rows.forEach(function(row){
-        localStorage.setItem('ee_'+row.data_key, row.data_value);
+        localStorage.setItem('ge_'+row.data_key, row.data_value);
         // Rebuild STATE.savedOutputs from individual output keys
         if (keyMap[row.data_key]) {
           if (!STATE.savedOutputs) STATE.savedOutputs = {};
@@ -616,7 +616,7 @@ async function loadCloudData() {
     }
     // Restore local state string — prefer local over cloud for app_state
     // (cloud rows are used for individual output keys, not full state)
-    var cloudStateStr = localStorage.getItem('ee_app_state');
+    var cloudStateStr = localStorage.getItem('ge_app_state');
     // Use local if it has scores, otherwise use cloud
     if (stateStr) {
       try {
@@ -651,14 +651,14 @@ async function loadCloudData() {
         STATE.conversationHistory = [];
         // Restore critical input fields from dedicated cloud keys if missing
         if (!STATE.savedInputs) STATE.savedInputs = {};
-        var inputResume = localStorage.getItem('ee_input_resume');
-        var inputRole   = localStorage.getItem('ee_input_targetrole');
+        var inputResume = localStorage.getItem('ge_input_resume');
+        var inputRole   = localStorage.getItem('ge_input_targetrole');
         if (inputResume && !STATE.savedInputs['0_resume']) STATE.savedInputs['0_resume'] = inputResume;
         if (inputRole   && !STATE.savedInputs['0_targetrole']) STATE.savedInputs['0_targetrole'] = inputRole;
 
         // Restore assessment scores from dedicated key if STATE lost them
         if ((!STATE.assessmentScores || Object.keys(STATE.assessmentScores||{}).length === 0)) {
-          var scoresBackup = localStorage.getItem('ee_assessment_scores');
+          var scoresBackup = localStorage.getItem('ge_assessment_scores');
           if (scoresBackup) {
             try {
               var sb = JSON.parse(scoresBackup);
@@ -669,7 +669,7 @@ async function loadCloudData() {
         restoreSession();
         // Mark as synced so migration popup doesn't reappear this session
         if (currentUser) {
-          try { localStorage.setItem('ee_synced', currentUser.id); } catch(e) {}
+          try { localStorage.setItem('ge_synced', currentUser.id); } catch(e) {}
         }
       } catch(e) { console.warn('Cloud merge error:', e.message); }
     }
@@ -690,7 +690,7 @@ function lsSave(data) {
   try {
     // Write to BOTH keys so lsLoad always finds the freshest data regardless of which key it checks first
     localStorage.setItem(LS_KEY, serialized);
-    localStorage.setItem('ee_app_state', serialized);
+    localStorage.setItem('ge_app_state', serialized);
   } catch(e) {
     if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
       showToast('⚠️ Storage full. Download your outputs and clear old data to continue saving.');
@@ -729,7 +729,7 @@ function safeJsonStringify(value, fallback) {
 }
 function lsLoad() {
   var primary = null;
-  try { primary = localStorage.getItem('ee_app_state'); } catch(e) {}
+  try { primary = localStorage.getItem('ge_app_state'); } catch(e) {}
   var parsedPrimary = safeJsonParse(primary, null);
   if (parsedPrimary && typeof parsedPrimary === 'object') return parsedPrimary;
 
@@ -737,7 +737,7 @@ function lsLoad() {
   try { secondary = localStorage.getItem(LS_KEY); } catch(e2) {}
   return safeJsonParse(secondary, null);
 }
-function lsClear() { try { localStorage.removeItem(LS_KEY); localStorage.removeItem('ee_app_state'); } catch(e) {} }
+function lsClear() { try { localStorage.removeItem(LS_KEY); localStorage.removeItem('ge_app_state'); } catch(e) {} }
 
 var STATE = {
   plan:null, currentAgent:null, completedAgents:[], savedOutputs:{}, savedInputs:{},
@@ -2656,7 +2656,7 @@ async function generateAgent0() {
   // Hard save to both localStorage keys immediately
   var preSave = JSON.stringify(STATE);
   try { localStorage.setItem(LS_KEY, preSave); } catch(e) {}
-  try { localStorage.setItem('ee_app_state', preSave); } catch(e) {}
+  try { localStorage.setItem('ge_app_state', preSave); } catch(e) {}
 
   var btn = document.getElementById('btnGen_0');
   var out = document.getElementById('output_0');
@@ -3046,7 +3046,7 @@ function buildEmbeddedAssessment(container) {
         // Write directly to both localStorage keys — bypasses debounce entirely
         var serialized = JSON.stringify(STATE);
         try { localStorage.setItem(LS_KEY, serialized); } catch(e) {}
-        try { localStorage.setItem('ee_app_state', serialized); } catch(e) {}
+        try { localStorage.setItem('ge_app_state', serialized); } catch(e) {}
         // Also push to Supabase immediately (no debounce)
         if (currentUser) { saveToCloud('app_state', serialized); }
         showToast('✓ Assessment complete! Results saved.');
@@ -3056,7 +3056,7 @@ function buildEmbeddedAssessment(container) {
         STATE.assessmentResult = 'Assessment completed.';
         var fbSerialized = JSON.stringify(STATE);
         try { localStorage.setItem(LS_KEY, fbSerialized); } catch(e) {}
-        try { localStorage.setItem('ee_app_state', fbSerialized); } catch(e) {}
+        try { localStorage.setItem('ge_app_state', fbSerialized); } catch(e) {}
         console.error('Save error (scores still saved):', saveErr);
       }
       // Then build the full complete screen
@@ -5009,10 +5009,10 @@ function saveManualScores() {
   // Save to both localStorage keys immediately — bypass debounce
   var serialized = JSON.stringify(STATE);
   try { localStorage.setItem(LS_KEY, serialized); } catch(e) {}
-  try { localStorage.setItem('ee_app_state', serialized); } catch(e) {}
+  try { localStorage.setItem('ge_app_state', serialized); } catch(e) {}
   // Also save scores to a dedicated cloud key so they survive browser clears
   var scoresStr = JSON.stringify({scores:scores, result:quickText, savedAt:new Date().toISOString()});
-  try { localStorage.setItem('ee_assessment_scores', scoresStr); } catch(e) {}
+  try { localStorage.setItem('ge_assessment_scores', scoresStr); } catch(e) {}
   if (currentUser) {
     saveToCloud('app_state', serialized);
     saveToCloud('assessment_scores', scoresStr);
@@ -6841,7 +6841,7 @@ function connectGoogleCalendar() {
     + '</div>'
     + '<div style="margin-bottom:14px">'
     + '<label style="font-size:11px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--navy);display:block;margin-bottom:5px">Google Client ID <span style="color:var(--gold-dark);font-size:10px">(Required — from Google Cloud Console)</span></label>'
-    + '<input id="gcal-client-id" type="text" class="dash-inline-input" placeholder="Your Google OAuth 2.0 Client ID" value="' + escHtml(localStorage.getItem('gcal_client_id')||'') + '">'
+    + '<input id="gcal-client-id" type="text" class="dash-inline-input" placeholder="Your Google OAuth 2.0 Client ID" value="' + escHtml(localStorage.getItem('ge_gcal_client_id')||'') + '">'
     + '<div style="font-size:10px;color:var(--text-muted);margin-top:4px">Create at console.cloud.google.com → Credentials → OAuth 2.0 Client IDs</div>'
     + '</div>'
     + '<div style="background:rgba(184,151,58,0.08);border:1px solid rgba(184,151,58,0.2);border-radius:4px;padding:10px 12px;margin-bottom:16px;font-size:11px;color:var(--text-secondary);line-height:1.6">'
@@ -6865,12 +6865,12 @@ function startGcalOAuth() {
     showToast('Please enter your Google Client ID first.');
     return;
   }
-  localStorage.setItem('gcal_client_id', clientId);
+  localStorage.setItem('ge_gcal_client_id', clientId);
   closeGcalModal();
 
   var scopes = 'https://www.googleapis.com/auth/calendar.events.readonly';
   var state = 'govedge_gcal_' + Date.now();
-  localStorage.setItem('gcal_oauth_state', state);
+  localStorage.setItem('ge_gcal_oauth_state', state);
 
   var authUrl = 'https://accounts.google.com/o/oauth2/v2/auth'
     + '?client_id=' + encodeURIComponent(clientId)
@@ -6894,7 +6894,7 @@ function startGcalOAuth() {
       if (popup.closed) {
         clearInterval(pollInterval);
         // Check if token was stored by the callback
-        var token = localStorage.getItem('gcal_access_token');
+        var token = localStorage.getItem('ge_gcal_access_token');
         if (token) {
           STATE.mcpCalendarConnected = true;
           saveState();
@@ -6915,7 +6915,7 @@ window.addEventListener('message', function(event) {
   if (event.data && event.data.type === 'gcal_oauth_success') {
     var token = event.data.access_token;
     if (token) {
-      localStorage.setItem('gcal_access_token', token);
+      localStorage.setItem('ge_gcal_access_token', token);
       STATE.mcpCalendarConnected = true;
       saveState();
       showToast('✓ Google Calendar connected.');
@@ -6926,7 +6926,7 @@ window.addEventListener('message', function(event) {
 
 async function fetchCalendarEvents(accessToken) {
   if (!accessToken) {
-    accessToken = localStorage.getItem('gcal_access_token');
+    accessToken = localStorage.getItem('ge_gcal_access_token');
     if (!accessToken) { showToast('Calendar not connected. Click Connect first.'); return; }
   }
   try {
@@ -6943,7 +6943,7 @@ async function fetchCalendarEvents(accessToken) {
     });
     if (!r.ok) {
       if (r.status === 401) {
-        localStorage.removeItem('gcal_access_token');
+        localStorage.removeItem('ge_gcal_access_token');
         STATE.mcpCalendarConnected = false;
         saveState();
         showToast('Calendar access expired. Please reconnect.');
@@ -7971,7 +7971,7 @@ async function checkAndOfferMigration() {
   // Check for local GovEdge state with actual content
   var localState = null;
   try {
-    var raw = localStorage.getItem('govedge_ai_v5') || localStorage.getItem('ee_app_state');
+    var raw = localStorage.getItem('govedge_ai_v5') || localStorage.getItem('ge_app_state');
     if (raw) localState = JSON.parse(raw);
   } catch(e) {}
   
@@ -7982,7 +7982,7 @@ async function checkAndOfferMigration() {
   var hasAssessment = !!localState.assessmentResult;
   
   if (!hasOutputs && !hasInputs && !hasAssessment) return;
-  if (localStorage.getItem('ee_synced') === currentUser.id) return;
+  if (localStorage.getItem('ge_synced') === currentUser.id) return;
   
   // Show migration banner
   var existing = document.getElementById('migration-banner');
@@ -8010,10 +8010,10 @@ async function runMigration() {
   if (btn) { btn.textContent = 'Uploading...'; btn.disabled = true; }
   
   try {
-    var token = localStorage.getItem('sb_token');
+    var token = localStorage.getItem('ge_sb_token');
     
     // Get the full local state
-    var raw = localStorage.getItem('govedge_ai_v5') || localStorage.getItem('ee_app_state');
+    var raw = localStorage.getItem('govedge_ai_v5') || localStorage.getItem('ge_app_state');
     if (raw) {
       await fetch(SB_URL + '/rest/v1/govedge_data', {
         method: 'POST',
@@ -8051,7 +8051,7 @@ async function runMigration() {
       });
     }
     
-    localStorage.setItem('ee_synced', currentUser.id);
+    localStorage.setItem('ge_synced', currentUser.id);
     
     var banner = document.getElementById('migration-banner');
     if (banner) {
@@ -8078,13 +8078,13 @@ function dismissMigration() {
 
 
 async function getValidToken() {
-  var token = localStorage.getItem('sb_token');
+  var token = localStorage.getItem('ge_sb_token');
   if (!token || !currentUser) return token;
   // Fast JWT expiry pre-check before network call
   try {
     var payload = JSON.parse(atob(token.split('.')[1]));
     if (payload.exp && Date.now() > payload.exp * 1000) {
-      localStorage.removeItem('sb_token');
+      localStorage.removeItem('ge_sb_token');
       currentUser = null;
       showToast('Your session has expired. Please sign in again.');
       setTimeout(function(){ showAuthModal(); }, 1500);
@@ -8098,9 +8098,9 @@ async function getValidToken() {
     });
     if (r.ok) return token;
     // Token expired - clear session
-    localStorage.removeItem('sb_token');
-    localStorage.removeItem('sb_uid');
-    localStorage.removeItem('sb_email');
+    localStorage.removeItem('ge_sb_token');
+    localStorage.removeItem('ge_sb_uid');
+    localStorage.removeItem('ge_sb_email');
     currentUser = null;
     // Show re-auth modal after brief delay
     setTimeout(function() {
@@ -8239,9 +8239,9 @@ function runGovEdgeSelfTest() {
 
 window.addEventListener('DOMContentLoaded', async function() {
   loadState();
-  var token = localStorage.getItem('sb_token');
-  var uid = localStorage.getItem('sb_uid');
-  var email = localStorage.getItem('sb_email');
+  var token = localStorage.getItem('ge_sb_token');
+  var uid = localStorage.getItem('ge_sb_uid');
+  var email = localStorage.getItem('ge_sb_email');
   if (token && uid) {
     try {
       var vr = await fetch(SB_URL + '/auth/v1/user', {
@@ -8255,7 +8255,7 @@ window.addEventListener('DOMContentLoaded', async function() {
         setTimeout(checkAndOfferMigration, 1500);
         if (isAdmin()) setTimeout(healthCheck, 3000);
       } else {
-        localStorage.removeItem('sb_token'); localStorage.removeItem('sb_uid'); localStorage.removeItem('sb_email');
+        localStorage.removeItem('ge_sb_token'); localStorage.removeItem('ge_sb_uid'); localStorage.removeItem('ge_sb_email');
         if (STATE.plan) { restoreSession(); } else { document.getElementById('onboardingScreen').style.display = 'flex'; }
         setTimeout(function(){ showAuthModal(); }, 900);
       }
