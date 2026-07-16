@@ -2614,6 +2614,7 @@ async function callClaudeWithMsgs(id, msgs, lastPrompt, btn, btnLabel, filename)
     var decoder = new TextDecoder();
     var buffer = '';
     var fullText = '';
+    var sawMessageStop = false;
 
     if (out) { out.innerHTML = '<span></span>'; }
     var textSpan = out ? out.querySelector('span') : null;
@@ -2628,16 +2629,29 @@ async function callClaudeWithMsgs(id, msgs, lastPrompt, btn, btnLabel, filename)
         var line = lines[i];
         if (line.startsWith('data: ')) {
           var data = line.slice(6);
-          if (data === '[DONE]') break;
           try {
             var parsed = JSON.parse(data);
             if (parsed.type === 'content_block_delta' && parsed.delta && parsed.delta.text) {
               fullText += parsed.delta.text;
               if (textSpan) textSpan.textContent = fullText;
+            } else if (parsed.type === 'message_stop') {
+              sawMessageStop = true;
+            } else if (parsed.type === 'error') {
+              throw new Error((parsed.error && parsed.error.message) || 'The model reported an error mid-stream.');
             }
-          } catch(e) {}
+          } catch(e) {
+            if (!(e instanceof SyntaxError)) throw e;
+          }
         }
       }
+    }
+
+    if (!sawMessageStop) {
+      var partialNote = fullText ? '<br><br><strong>What was received before the interruption:</strong><div class="output-box" style="margin-top:8px">' + escHtml(fullText) + '</div>' : '';
+      if (out) out.innerHTML = '<div class="error-box"><strong>The connection was interrupted before the response finished generating.</strong> Click Generate again — a second attempt usually succeeds.' + partialNote + '</div>';
+      if (btn) { btn.disabled = false; btn.innerHTML = '<span>'+btnLabel+'</span>'; }
+      clearTimeout(_eeTimeout);
+      return;
     }
 
     // Save output
@@ -2803,7 +2817,7 @@ async function generateAgent0B() {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       var reader = r.body.getReader();
       var decoder = new TextDecoder();
-      var buffer = '', fullText = '';
+      var buffer = '', fullText = '', sawMessageStop = false;
       if (out) out.innerHTML = '<div style="font-size:11px;color:var(--gold-dark);font-weight:600;letter-spacing:.08em;margin-bottom:8px">BUILDING: ' + escHtml(pname) + '</div><span id="ob-stream-' + pathKey + '"></span>';
       var span = document.getElementById('ob-stream-' + pathKey);
       while (true) {
@@ -2814,15 +2828,24 @@ async function generateAgent0B() {
         for (var li = 0; li < lines.length; li++) {
           var line = lines[li];
           if (!line.startsWith('data: ')) continue;
-          var data = line.slice(6); if (data === '[DONE]') break;
+          var data = line.slice(6);
           try {
             var parsed = JSON.parse(data);
             if (parsed.type === 'content_block_delta' && parsed.delta && parsed.delta.text) {
               fullText += parsed.delta.text;
               if (span) span.textContent = fullText;
+            } else if (parsed.type === 'message_stop') {
+              sawMessageStop = true;
+            } else if (parsed.type === 'error') {
+              throw new Error((parsed.error && parsed.error.message) || 'The model reported an error mid-stream.');
             }
-          } catch(pe) {}
+          } catch(pe) { if (!(pe instanceof SyntaxError)) throw pe; }
         }
+      }
+      if (!sawMessageStop) {
+        var errOb = new Error('The connection was interrupted before the resume for "' + pname + '" finished generating. Click Generate again — a second attempt usually succeeds.');
+        errOb.partialText = fullText;
+        throw errOb;
       }
       if (fullText) {
         allOutputs[pathKey] = fullText;
@@ -2830,7 +2853,7 @@ async function generateAgent0B() {
         if (!firstOutput) firstOutput = fullText;
       }
     } catch(e) {
-      allOutputs[pathKey] = 'Error generating resume for path "' + pname + '": ' + e.message;
+      allOutputs[pathKey] = 'Error generating resume for path "' + pname + '": ' + e.message + (e.partialText ? '\n\n[Partial output received before interruption:]\n' + e.partialText : '');
     }
   }
 
@@ -2922,19 +2945,77 @@ async function generateReport(scores, name, reportBtn) {
   reportBtn.innerHTML = '<div class="spinner dark"></div><span>Generating your report...</span>';
   reportOut.textContent = ''; reportOut.classList.add('streaming-cursor');
   var scoreText = buildScoreIntakeForm(scores, name);
-  var reportPrompt = 'I am a career coach. Below is the completed Career Capital Assessment Suite Score Intake Form for a client. Generate a plain-English assessment report.\n\nREPORT REQUIREMENTS:\n1. Write entirely in plain English. No psychological jargon.\n2. Be direct and specific to this client\'s scores.\n3. Include specific job search applications for every insight.\n6. Use the client\'s first name throughout.\n\nREPORT STRUCTURE: SECTION 1: THE BIG PICTURE | SECTION 2: YOUR CORE EXECUTIVE STRENGTHS (top 2-3 from Assessment I) | SECTION 3: SKILLS THAT TRAVEL WITH YOU (top 2-3 from Assessment II) | SECTION 4: WHAT YOU VALUE AND HOW YOU LEAD (top 2-3 from Assessment III) | SECTION 5: YOUR LEADERSHIP PRESENCE (top 2-3 from Assessment IV — do NOT use terms EI, EQ, or Emotional Intelligence) | SECTION 6: YOUR DEVELOPMENT EDGE (lowest 1-2 scores) | SECTION 7: HOW TO USE THIS IN YOUR SEARCH (3 numbered actions)\n\nCLIENT LEVEL: C-suite / VP executive. Peer-to-peer tone.\n\nSCORE INTAKE FORM:\n'+scoreText;
+  var reportPrompt = 'I am a career coach. Below is the completed Career Capital Assessment Suite Score Intake Form for a GovCon (government contracting) client. Generate a plain-English assessment report.\n\nREPORT REQUIREMENTS:\n1. Write entirely in plain English. No psychological jargon.\n2. Be direct and specific to this client\'s scores.\n3. Include specific GovCon job search applications for every insight — contract vehicles, clearance, past performance, program leadership.\n4. Use the client\'s first name throughout.\n\nREPORT STRUCTURE: SECTION 1: THE BIG PICTURE | SECTION 2: YOUR CORE EXECUTIVE STRENGTHS (top 2-3 from Assessment I) | SECTION 3: SKILLS THAT TRAVEL WITH YOU (top 2-3 from Assessment II) | SECTION 4: WHAT YOU VALUE AND HOW YOU LEAD (top 2-3 from Assessment III) | SECTION 5: YOUR LEADERSHIP PRESENCE (top 2-3 from Assessment IV — do NOT use terms EI, EQ, or Emotional Intelligence) | SECTION 6: YOUR DEVELOPMENT EDGE (lowest 1-2 scores) | SECTION 7: HOW TO USE THIS IN YOUR SEARCH (3 numbered actions)\n\nCLIENT LEVEL: Senior GovCon executive — program executive, capture/BD leader, or agency-transition candidate. Peer-to-peer tone.\n\nSCORE INTAKE FORM:\n'+scoreText;
+
+  var _rptCtrl = new AbortController();
+  var _rptTimeout = setTimeout(function(){ _rptCtrl.abort(); }, 240000);
   try {
-    var r = await fetch('https://govedge-proxy.cssceo.workers.dev',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8000,system:'You are an expert career coach generating a personal assessment report. Write in warm, direct, peer-to-peer professional language. Be specific to the scores provided.',messages:[{role:'user',content:reportPrompt}]})});
-    var d = await r.json();
-    if (d.error) { reportOut.classList.remove('streaming-cursor'); reportOut.innerHTML = '<div class="error-box">Error generating report. Please try again.</div>'; }
-    else {
-      var text = d.content.map(function(b){return b.text||'';}).join('');
-      reportOut.classList.remove('streaming-cursor'); reportOut.textContent = text;
-      STATE.reportText = text; saveState();
-      reportBtn.innerHTML = '<span>✓ Report Generated — Download Below</span>';
-      document.getElementById('ea-report-dl-btn').style.display = 'inline-flex';
+    var r = await fetch('https://govedge-proxy.cssceo.workers.dev',{
+      method:'POST',
+      signal: _rptCtrl.signal,
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-6',
+        max_tokens:8000,
+        stream:true,
+        system:'You are an expert GovCon career coach generating a personal assessment report. Write in warm, direct, peer-to-peer professional language. Be specific to the scores provided.',
+        messages:[{role:'user',content:reportPrompt}]
+      })
+    });
+    if (!r.ok) {
+      var errBody = await r.json().catch(function(){return {};});
+      throw new Error((errBody.error && errBody.error.message) || 'HTTP ' + r.status);
     }
-  } catch(e) { reportOut.classList.remove('streaming-cursor'); reportOut.innerHTML = '<div class="error-box">Connection error. Please try again.</div>'; reportBtn.disabled = false; reportBtn.innerHTML = '<span>Generate My Career Capital Report</span>'; return; }
+    var reader = r.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '', fullText = '', sawMessageStop = false;
+    reportOut.innerHTML = '<span id="ea-report-stream"></span>';
+    var reportSpan = document.getElementById('ea-report-stream');
+    while (true) {
+      var result = await reader.read();
+      if (result.done) break;
+      buffer += decoder.decode(result.value, {stream: true});
+      var lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (!line.startsWith('data: ')) continue;
+        var data = line.slice(6);
+        try {
+          var parsed = JSON.parse(data);
+          if (parsed.type === 'content_block_delta' && parsed.delta && parsed.delta.text) {
+            fullText += parsed.delta.text;
+            if (reportSpan) reportSpan.textContent = fullText;
+          } else if (parsed.type === 'message_stop') {
+            sawMessageStop = true;
+          } else if (parsed.type === 'error') {
+            throw new Error((parsed.error && parsed.error.message) || 'The model reported an error mid-stream.');
+          }
+        } catch(pe) { if (!(pe instanceof SyntaxError)) throw pe; }
+      }
+    }
+    reportOut.classList.remove('streaming-cursor');
+    if (!sawMessageStop) {
+      var partialRpt = fullText ? '<br><br><strong>What was received before the interruption:</strong><div class="output-box" style="margin-top:8px">' + escHtml(fullText) + '</div>' : '';
+      reportOut.innerHTML = '<div class="error-box"><strong>The connection was interrupted before your report finished generating.</strong> Click Generate again — a second attempt usually succeeds.' + partialRpt + '</div>';
+      reportBtn.disabled = false;
+      reportBtn.innerHTML = '<span>Generate My Career Capital Report</span>';
+      clearTimeout(_rptTimeout);
+      return;
+    }
+    reportOut.textContent = fullText;
+    STATE.reportText = fullText; saveState();
+    reportBtn.innerHTML = '<span>✓ Report Generated — Download Below</span>';
+    document.getElementById('ea-report-dl-btn').style.display = 'inline-flex';
+  } catch(e) {
+    reportOut.classList.remove('streaming-cursor');
+    var errMsg = (e.name === 'AbortError') ? 'Generation timed out. Click Generate again — a second attempt usually succeeds.' : ('Connection error. Please try again.<br><br>' + escHtml(e.message));
+    reportOut.innerHTML = '<div class="error-box">' + errMsg + '</div>';
+    reportBtn.disabled = false; reportBtn.innerHTML = '<span>Generate My Career Capital Report</span>';
+    clearTimeout(_rptTimeout);
+    return;
+  }
+  clearTimeout(_rptTimeout);
   reportBtn.disabled = false;
 }
 
@@ -4452,6 +4533,7 @@ async function generateMockDebrief() {
     var decoder = new TextDecoder();
     var buffer  = '';
     var fullText = '';
+    var sawMessageStop = false;
     textEl.classList.remove('streaming-cursor');
     textEl.textContent = '';
 
@@ -4465,15 +4547,25 @@ async function generateMockDebrief() {
         var line = sseLines[li];
         if (!line.startsWith('data: ')) continue;
         var data = line.slice(6);
-        if (data === '[DONE]') break;
         try {
           var parsed = JSON.parse(data);
           if (parsed.type === 'content_block_delta' && parsed.delta && parsed.delta.text) {
             fullText += parsed.delta.text;
             textEl.textContent = fullText;
+          } else if (parsed.type === 'message_stop') {
+            sawMessageStop = true;
+          } else if (parsed.type === 'error') {
+            throw new Error((parsed.error && parsed.error.message) || 'The model reported an error mid-stream.');
           }
-        } catch(pe) { /* skip malformed SSE line */ }
+        } catch(pe) { if (!(pe instanceof SyntaxError)) throw pe; }
       }
+    }
+
+    if (!sawMessageStop) {
+      textEl.innerHTML = '<div class="error-box"><strong>The connection was interrupted before the debrief finished generating.</strong> Click Generate AI Debrief again — a second attempt usually succeeds.' + (fullText ? '<br><br><strong>What was received before the interruption:</strong><div class="output-box" style="margin-top:8px">' + escHtml(fullText) + '</div>' : '') + '</div>';
+      btn.disabled = false;
+      btn.innerHTML = '<span>Generate AI Debrief</span>';
+      return;
     }
 
     if (!fullText) {
@@ -4533,6 +4625,7 @@ async function callClaudeStreaming(id, msgs, lastPrompt, btn, btnLabel) {
     var decoder = new TextDecoder();
     var buffer = '';
     var fullText = '';
+    var sawMessageStop = false;
     if (out) out.innerHTML = '<span></span>';
     var textSpan = out ? out.querySelector('span') : null;
 
@@ -4546,16 +4639,32 @@ async function callClaudeStreaming(id, msgs, lastPrompt, btn, btnLabel) {
         var line = lines[i];
         if (line.startsWith('data: ')) {
           var data = line.slice(6);
-          if (data === '[DONE]') break;
           try {
             var parsed = JSON.parse(data);
             if (parsed.type === 'content_block_delta' && parsed.delta && parsed.delta.text) {
               fullText += parsed.delta.text;
               if (textSpan) textSpan.textContent = fullText;
+            } else if (parsed.type === 'message_stop') {
+              sawMessageStop = true;
+            } else if (parsed.type === 'error') {
+              throw new Error((parsed.error && parsed.error.message) || 'The model reported an error mid-stream.');
             }
-          } catch(e) {}
+          } catch(e) {
+            if (!(e instanceof SyntaxError)) throw e;
+          }
         }
       }
+    }
+
+    if (!sawMessageStop) {
+      // Stream closed without Anthropic's own completion event ever arriving —
+      // the connection was cut short (network blip, proxy hiccup, backgrounded
+      // tab, etc.). fullText is genuinely partial and must not be saved or
+      // marked complete, even though no HTTP error occurred.
+      if (out) out.innerHTML = '<div class="error-box"><strong>The connection was interrupted before the response finished generating.</strong> Click Generate again — a second attempt usually succeeds.' + (fullText ? '<br><br><strong>What was received before the interruption:</strong><div class="output-box" style="margin-top:8px">' + escHtml(fullText) + '</div>' : '') + '</div>';
+      if (btn) { btn.disabled = false; btn.innerHTML = '<span>'+btnLabel+'</span>'; }
+      clearTimeout(_timeout);
+      return;
     }
 
     // Save output
@@ -6033,7 +6142,7 @@ End with: TARGET TITLE FOR AGENT 0B \u2014 [the specific title they should optim
 
     var reader = r.body.getReader();
     var decoder = new TextDecoder();
-    var buffer = '', fullText = '';
+    var buffer = '', fullText = '', sawMessageStop = false;
     if (out) { out.innerHTML = '<span id="a075-stream-span"></span>'; }
     var span = document.getElementById('a075-stream-span');
 
@@ -6047,18 +6156,28 @@ End with: TARGET TITLE FOR AGENT 0B \u2014 [the specific title they should optim
         var line = lines[li];
         if (!line.startsWith('data: ')) continue;
         var data = line.slice(6);
-        if (data === '[DONE]') break;
         try {
           var parsed = JSON.parse(data);
           if (parsed.type === 'content_block_delta' && parsed.delta && parsed.delta.text) {
             fullText += parsed.delta.text;
             if (span) span.textContent = fullText;
+          } else if (parsed.type === 'message_stop') {
+            sawMessageStop = true;
+          } else if (parsed.type === 'error') {
+            throw new Error((parsed.error && parsed.error.message) || 'The model reported an error mid-stream.');
           }
-        } catch(pe) {}
+        } catch(pe) {
+          if (!(pe instanceof SyntaxError)) throw pe;
+        }
       }
     }
 
     if (!fullText) { throw new Error('Empty response from API'); }
+    if (!sawMessageStop) {
+      var err075 = new Error('The connection was interrupted before the response finished generating. Click Generate again — a second attempt usually succeeds.');
+      err075.partialText = fullText;
+      throw err075;
+    }
 
     if (!STATE.savedOutputs) STATE.savedOutputs = {};
     STATE.savedOutputs['0.75'] = fullText;
@@ -6073,7 +6192,8 @@ End with: TARGET TITLE FOR AGENT 0B \u2014 [the specific title they should optim
     if (body) { body.innerHTML = renderAgent075(); }
 
   } catch(e) {
-    if (out) out.innerHTML = '<div class="error-box">Error generating output: ' + escHtml(e.message) + '. Please try again.</div>';
+    var partial075 = e.partialText ? '<br><br><strong>What was received before the interruption:</strong><div class="output-box" style="margin-top:8px">' + escHtml(e.partialText) + '</div>' : '';
+    if (out) out.innerHTML = '<div class="error-box">Error generating output: ' + escHtml(e.message) + partial075 + '</div>';
     console.error('Agent 2 error:', e);
   }
 
@@ -6357,6 +6477,7 @@ async function generateAgent2_5() {
     var reader1 = r1.body.getReader();
     var decoder = new TextDecoder();
     var buf = '';
+    var sawStop1 = false;
     if (outCustom) outCustom.innerHTML = '<span id="a25-stream-custom"></span>';
     var span1 = document.getElementById('a25-stream-custom');
     while (true) {
@@ -6366,12 +6487,18 @@ async function generateAgent2_5() {
       for (var li=0;li<slines.length;li++) {
         var ln = slines[li];
         if (!ln.startsWith('data: ')) continue;
-        var d = ln.slice(6); if (d==='[DONE]') break;
-        try { var p=JSON.parse(d); if(p.type==='content_block_delta'&&p.delta&&p.delta.text){customText+=p.delta.text;if(span1)span1.textContent=customText;} } catch(e){}
+        var d = ln.slice(6);
+        try { var p=JSON.parse(d); if(p.type==='content_block_delta'&&p.delta&&p.delta.text){customText+=p.delta.text;if(span1)span1.textContent=customText;} else if(p.type==='message_stop'){sawStop1=true;} else if(p.type==='error'){throw new Error((p.error&&p.error.message)||'The model reported an error mid-stream.');} } catch(e){ if(!(e instanceof SyntaxError)) throw e; }
       }
     }
+    if (!sawStop1) {
+      var err1 = new Error('The connection was interrupted before the resume finished generating. Click Generate again — a second attempt usually succeeds.');
+      err1.partialText = customText;
+      throw err1;
+    }
   } catch(e) {
-    if (outCustom) outCustom.innerHTML = '<div class="error-box">Error generating resume: ' + escHtml(e.message) + '</div>';
+    var partial1 = e.partialText ? '<br><br><strong>What was received before the interruption:</strong><div class="output-box" style="margin-top:8px">' + escHtml(e.partialText) + '</div>' : '';
+    if (outCustom) outCustom.innerHTML = '<div class="error-box">Error generating resume: ' + escHtml(e.message) + partial1 + '</div>';
     btn.disabled = false; btn.innerHTML = '<span>✦ Generate Customized Resume + Change Log →</span>';
     return;
   }
@@ -6417,6 +6544,7 @@ async function generateAgent2_5() {
     if (!r2.ok) throw new Error('HTTP ' + r2.status);
     var reader2 = r2.body.getReader();
     var buf2 = '';
+    var sawStop2 = false;
     if (outDiff) outDiff.innerHTML = '<span id="a25-stream-diff"></span>';
     var span2 = document.getElementById('a25-stream-diff');
     while (true) {
@@ -6426,12 +6554,19 @@ async function generateAgent2_5() {
       for (var li2=0;li2<slines2.length;li2++) {
         var ln2 = slines2[li2];
         if (!ln2.startsWith('data: ')) continue;
-        var d2 = ln2.slice(6); if (d2==='[DONE]') break;
-        try { var p2=JSON.parse(d2); if(p2.type==='content_block_delta'&&p2.delta&&p2.delta.text){diffText+=p2.delta.text;if(span2)span2.textContent=diffText;} } catch(e){}
+        var d2 = ln2.slice(6);
+        try { var p2=JSON.parse(d2); if(p2.type==='content_block_delta'&&p2.delta&&p2.delta.text){diffText+=p2.delta.text;if(span2)span2.textContent=diffText;} else if(p2.type==='message_stop'){sawStop2=true;} else if(p2.type==='error'){throw new Error((p2.error&&p2.error.message)||'The model reported an error mid-stream.');} } catch(e){ if(!(e instanceof SyntaxError)) throw e; }
       }
     }
+    if (!sawStop2) {
+      var err2 = new Error('The connection was interrupted before the change log finished generating. Your customized resume above is unaffected and already saved.');
+      err2.partialText = diffText;
+      throw err2;
+    }
   } catch(e) {
-    if (outDiff) outDiff.innerHTML = '<div class="error-box">Error generating change log: ' + escHtml(e.message) + '</div>';
+    var partial2 = e.partialText ? '<br><br><strong>What was received before the interruption:</strong><div class="output-box" style="margin-top:8px">' + escHtml(e.partialText) + '</div>' : '';
+    if (outDiff) outDiff.innerHTML = '<div class="error-box">Error generating change log: ' + escHtml(e.message) + partial2 + '</div>';
+    diffText = ''; // do not silently persist a truncated change log as final
   }
 
   // Save outputs
@@ -7343,7 +7478,7 @@ async function streamA7Doc(key, prompt, outEl) {
   }
   var reader = r.body.getReader();
   var decoder = new TextDecoder();
-  var buffer = '', fullText = '';
+  var buffer = '', fullText = '', sawMessageStop = false;
   if (outEl) outEl.textContent = '';
   while (true) {
     var result = await reader.read();
@@ -7355,16 +7490,24 @@ async function streamA7Doc(key, prompt, outEl) {
       var line = lines[i];
       if (line.startsWith('data: ')) {
         var data = line.slice(6);
-        if (data === '[DONE]') break;
         try {
           var parsed = JSON.parse(data);
           if (parsed.type === 'content_block_delta' && parsed.delta && parsed.delta.text) {
             fullText += parsed.delta.text;
             if (outEl) outEl.textContent = fullText;
+          } else if (parsed.type === 'message_stop') {
+            sawMessageStop = true;
+          } else if (parsed.type === 'error') {
+            throw new Error((parsed.error && parsed.error.message) || 'The model reported an error mid-stream.');
           }
-        } catch(e) {}
+        } catch(e) { if (!(e instanceof SyntaxError)) throw e; }
       }
     }
+  }
+  if (!sawMessageStop) {
+    var errDoc = new Error('The connection was interrupted before this document finished generating. Click Regenerate to retry.');
+    errDoc.partialText = fullText;
+    throw errDoc;
   }
   return fullText;
 }
