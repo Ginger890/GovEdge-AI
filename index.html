@@ -319,6 +319,12 @@ window.addEventListener('unhandledrejection', function(event) {
   }
 });
 
+// Bump this string every time you push a new deploy (e.g. '3.0.2'). It powers
+// two things: the passive version banner just below (fires when a client
+// happens to load a fresh copy) and the active update-check further down
+// (which proactively fetches over the network to catch clients stuck on a
+// stale cached copy — GitHub Pages does not support custom cache-control
+// headers, so this in-app check is what actually solves that problem).
 var APP_VERSION = '3.0.1';
 // Main 19-agent pathway used for progress, restore order, and QA.
 // Optional/parallel agents (6e, 6f, 6g) remain available but do not distort 19-agent progress.
@@ -328,7 +334,7 @@ function isMainAgentId(id){ return MAIN_AGENT_ORDER.indexOf(id) > -1; }
 function getProgressAgentTotal(){ return MAIN_AGENT_ORDER.length; }
 (function() {
   var stored = localStorage.getItem('ge_version');
-  var sessionSeen = sessionStorage.getItem('ee_ver_seen');
+  var sessionSeen = sessionStorage.getItem('ge_ver_seen');
   if (stored && stored !== APP_VERSION && !sessionSeen) {
     var banner = document.createElement('div');
     banner.id = 'ee-ver-banner';
@@ -347,7 +353,7 @@ function getProgressAgentTotal(){ return MAIN_AGENT_ORDER.length; }
     banner.appendChild(closeBtn);
     document.body.prepend(banner);
   }
-  sessionStorage.setItem('ee_ver_seen', '1');
+  sessionStorage.setItem('ge_ver_seen', '1');
   localStorage.setItem('ge_version', APP_VERSION);
 })();
 
@@ -8512,6 +8518,56 @@ function showToast(msg, duration) {
 var _lastGenerateTime = 0;
 var _generateCooldown = 3000; // 3 seconds between generates
 
+// ── Auto-update detection ────────────────────────────────────────────────
+// GitHub Pages does not support custom Cache-Control headers, so the only
+// reliable fix for clients getting stuck on an old cached copy is to check,
+// from inside the running app, whether a newer deploy exists — and if so,
+// prompt for a real refresh that bypasses every caching layer.
+async function checkForAppUpdate() {
+  if (window._updateDismissed) return;
+  try {
+    // cache:'no-store' bypasses the browser's disk/memory cache entirely.
+    // The timestamp query param also dodges GitHub Pages' ~10-minute edge
+    // cache, since it makes this a URL the CDN has never seen before.
+    var freshUrl = location.pathname + '?_vcheck=' + Date.now();
+    var res = await fetch(freshUrl, { cache: 'no-store' });
+    if (!res.ok) return;
+    var html = await res.text();
+    var m = html.match(/var APP_VERSION = '([^']+)'/);
+    if (m && m[1] && m[1] !== APP_VERSION) {
+      showUpdateBanner(m[1]);
+    }
+  } catch(e) {
+    // Silent failure — offline or a transient network hiccup isn't worth
+    // interrupting the client's work over.
+    console.warn('Update check failed:', e);
+  }
+}
+function showUpdateBanner(newVersion) {
+  if (document.getElementById('ge-update-banner') || document.getElementById('ee-ver-banner')) return; // already showing (this mechanism or the existing passive one)
+  var div = document.createElement('div');
+  div.id = 'ge-update-banner';
+  div.style.cssText = 'position:fixed;top:0;left:0;right:0;background:var(--navy);color:#fff;padding:10px 20px;font-family:\'DM Sans\',sans-serif;font-size:13px;display:flex;align-items:center;justify-content:center;gap:16px;z-index:99999;box-shadow:0 2px 10px rgba(0,0,0,.3);transform:translateY(-100%);transition:transform .3s ease';
+  div.innerHTML =
+    '<span>A newer version of GovEdge AI\u2122 is available.</span>' +
+    '<button onclick="applyAppUpdate()" style="background:var(--gold);color:var(--navy);border:none;padding:6px 16px;border-radius:5px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap">Refresh Now</button>' +
+    '<button onclick="dismissUpdateBanner()" style="background:transparent;color:#fff;opacity:.7;padding:4px 8px;border:none;font-size:12.5px;cursor:pointer">Remind me later</button>';
+  document.body.appendChild(div);
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() { div.style.transform = 'translateY(0)'; });
+  });
+}
+function applyAppUpdate() {
+  // Navigate to a URL neither the browser nor GitHub's CDN has cached,
+  // guaranteeing a genuinely fresh copy of the app loads.
+  location.href = location.pathname + '?v=' + Date.now();
+}
+function dismissUpdateBanner() {
+  var div = document.getElementById('ge-update-banner');
+  if (div) { div.style.transform = 'translateY(-100%)'; setTimeout(function(){ if (div.parentNode) div.remove(); }, 300); }
+  window._updateDismissed = true; // don't nag again for the rest of this session
+}
+
 function canGenerate() {
   var now = Date.now();
   if (now - _lastGenerateTime < _generateCooldown) {
@@ -8597,6 +8653,12 @@ window.addEventListener('DOMContentLoaded', async function() {
     if (STATE.plan) { restoreSession(); } else { document.getElementById('onboardingScreen').style.display = 'flex'; }
     setTimeout(function(){showAuthModal();}, 900);
   }
+
+  // Check for a newer deploy shortly after load, then periodically — so a
+  // client who leaves the app open for a long working session still gets
+  // prompted if you push an update mid-session.
+  setTimeout(checkForAppUpdate, 4000);
+  setInterval(checkForAppUpdate, 5 * 60 * 1000);
 });
 
 </script>
