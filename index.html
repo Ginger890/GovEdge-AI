@@ -2588,8 +2588,14 @@ async function callClaudeWithMsgs(id, msgs, lastPrompt, btn, btnLabel, filename)
   if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner dark"></div><span>' + btnLabel + '...</span>'; }
 
   var _eeCtrl = new AbortController();
-  // Agent 1 (Career Capital Assessment) produces 5 deliverables and needs more time
-  var _eeTimeoutMs = (id === '0') ? 240000 : (id === '3a') ? 180000 : 90000; // Agent 1=4min, Agent 12=3min (largest output), others=90s
+  // Per-agent timeout budgets (milliseconds) — same map as callClaudeStreaming, kept
+  // in sync since this function serves Agent 4, Agent 12, and the Video agent.
+  var GOVEDGE_TIMEOUTS_2 = {
+    '0':    240000, '0c':   240000, '1':    180000, 'gc3':  180000,
+    '6a':   240000, '2':    180000, '3a':   180000, '3b':   180000,
+    '5a':   180000, '4b':   180000, '6d':   180000, 'gc1':  180000, 'gc2':  150000
+  };
+  var _eeTimeoutMs = GOVEDGE_TIMEOUTS_2[id] || 120000; // default 2 minutes
   var _eeTimeout = setTimeout(function(){ _eeCtrl.abort(); }, _eeTimeoutMs);
   try {
     var r = await fetch('https://govedge-proxy.cssceo.workers.dev', {
@@ -4596,8 +4602,25 @@ async function callClaudeStreaming(id, msgs, lastPrompt, btn, btnLabel) {
   if (out) { out.innerHTML = '<span class="output-placeholder streaming-cursor"></span>'; }
   if (btn) { btn.disabled = true; }
 
+  // Per-agent timeout budgets (milliseconds). Streaming keeps the connection
+  // alive, so these are wall-clock ceilings, not expected duration.
+  var GOVEDGE_TIMEOUTS = {
+    '0':    240000, // Agent 1 — Career Capital Assessment: 5-deliverable structured output
+    '0c':   240000, // Agent 4 — LinkedIn Profile Intelligence: 9 full sections
+    '1':    180000, // Agent 7 — Market Intelligence & Positioning: large multi-part output
+    'gc3':  180000, // Agent 7A — Small Business/Set-Aside: 6-part analysis
+    '6a':   240000, // Agent 8 — Compensation Benchmarking: 8-part GovCon comp architecture
+    '2':    180000, // Agent 9 — Demand Creation & Outreach: BD + cleared-channels sections
+    '3a':   180000, // Agent 12 — Interview Intelligence: GovCon question bank + full brief
+    '3b':   180000, // Agent 15 — Offer/Decision/Relocation: up to 4 parts including ethics review
+    '5a':   180000, // Agent 17 — LinkedIn Authority Articles: large structured article output
+    '4b':   180000, // Agent 18 — Onboarding Intelligence: large structured 30-60-90 plan
+    '6d':   180000, // Agent 19 — Advisory Board Readiness: large structured output
+    'gc1':  180000, // Agent 3A — Contract Vehicle & Past Performance: multi-entry document
+    'gc2':  150000  // Agent 5A — Clearance Positioning: 5-part language coaching output
+  };
   var _ctrl = new AbortController();
-  var _timeoutMs = (id === '0') ? 240000 : (id === '3a') ? 180000 : 90000;
+  var _timeoutMs = GOVEDGE_TIMEOUTS[id] || 120000; // default 2 minutes
   var _timeout = setTimeout(function(){ _ctrl.abort(); }, _timeoutMs);
 
   try {
@@ -6125,9 +6148,12 @@ Include one specific warning: the thing people in this situation almost always d
 End with: TARGET TITLE FOR AGENT 0B \u2014 [the specific title they should optimize their resume toward]`;
 
   // Stream via Cloudflare proxy (same pattern as all other agents)
+  var _a075Ctrl = new AbortController();
+  var _a075Timeout = setTimeout(function(){ _a075Ctrl.abort(); }, 240000); // 4 min — 3 paths × 6 sections, largest single-call output in the app
   try {
     var r = await fetch('https://govedge-proxy.cssceo.workers.dev', {
       method: 'POST',
+      signal: _a075Ctrl.signal,
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
@@ -6186,14 +6212,17 @@ End with: TARGET TITLE FOR AGENT 0B \u2014 [the specific title they should optim
     if (navN) navN.classList.add('complete');
     saveState();
     updateProgress();
+    clearTimeout(_a075Timeout);
 
     // Re-render to show checklist and proceed button
     var body = document.getElementById('agentBody');
     if (body) { body.innerHTML = renderAgent075(); }
 
   } catch(e) {
+    clearTimeout(_a075Timeout);
+    var msg075 = (e.name === 'AbortError') ? 'Generation timed out after 4 minutes. Click Generate again — a second attempt usually succeeds. If it times out repeatedly, try evaluating fewer paths at once.' : e.message;
     var partial075 = e.partialText ? '<br><br><strong>What was received before the interruption:</strong><div class="output-box" style="margin-top:8px">' + escHtml(e.partialText) + '</div>' : '';
-    if (out) out.innerHTML = '<div class="error-box">Error generating output: ' + escHtml(e.message) + partial075 + '</div>';
+    if (out) out.innerHTML = '<div class="error-box">Error generating output: ' + escHtml(msg075) + partial075 + '</div>';
     console.error('Agent 2 error:', e);
   }
 
