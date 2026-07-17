@@ -1413,9 +1413,12 @@ async function runJobOpeningsResearch() {
 
   var run = { ranAt: new Date().toISOString(), usedWebSearch: true, openings: [], newCount: 0, newOpeningIds: [], sourcesNote: '' };
 
+  var _jobCtrl = new AbortController();
+  var _jobTimeout = setTimeout(function(){ _jobCtrl.abort(); }, 180000); // 3 min — ample ceiling for multi-query live web search + synthesis
   try {
     var r = await fetch('https://govedge-proxy.cssceo.workers.dev', {
       method: 'POST',
+      signal: _jobCtrl.signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
@@ -1483,9 +1486,11 @@ async function runJobOpeningsResearch() {
     document.getElementById('job-research-results').innerHTML = renderJobResearchRuns(getJobResearchRuns());
     showToast(openings.length ? ('\u2713 Found ' + openings.length + ' opening' + (openings.length===1?'':'s') + (run.newCount ? ', ' + run.newCount + ' new' : '') + '.') : 'No matching openings found this time \u2014 try again later or broaden your criteria.');
   } catch(e) {
-    statusEl.innerHTML = '<div class="error-box">Search failed: ' + escHtml(e.message) + '. Please try again.</div>';
+    var jobMsg = (e.name === 'AbortError') ? 'Search timed out after 3 minutes. Click Search again — a second attempt usually succeeds.' : e.message;
+    statusEl.innerHTML = '<div class="error-box">Search failed: ' + escHtml(jobMsg) + '. Please try again.</div>';
     console.error('runJobOpeningsResearch error:', e);
   } finally {
+    clearTimeout(_jobTimeout);
     btn.disabled = false;
     btn.innerHTML = '<span>🔍 ' + (getJobResearchRuns().length ? 'Refresh — Search for New Openings' : 'Search for Openings') + '</span>';
   }
@@ -1861,8 +1866,11 @@ async function scoreVideoBrandAttempt() {
 
     userContent.push({ type: 'text', text: promptText });
 
+    var _vbCtrl = new AbortController();
+    var _vbTimeout = setTimeout(function(){ _vbCtrl.abort(); }, 180000); // 3 min — ample ceiling; includes image frame analysis
     var r = await fetch('https://govedge-proxy.cssceo.workers.dev', {
       method: 'POST',
+      signal: _vbCtrl.signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
@@ -1871,6 +1879,7 @@ async function scoreVideoBrandAttempt() {
         messages: [{ role: 'user', content: userContent }]
       })
     });
+    clearTimeout(_vbTimeout);
     if (!r.ok) {
       var errBody = await r.json().catch(function(){ return {}; });
       throw new Error((errBody.error && errBody.error.message) || 'HTTP ' + r.status);
@@ -1889,7 +1898,8 @@ async function scoreVideoBrandAttempt() {
     saveVideoBrandAttemptMetaToState();
     showToast('\u2713 Take scored: ' + (scores.overall != null ? scores.overall + '/10' : 'see details below'));
   } catch(e) {
-    out.innerHTML = '<div class="error-box">Could not score this take: ' + escHtml(e.message) + '. Please check your connection and try again.</div>';
+    var vbMsg = (e.name === 'AbortError') ? 'Scoring timed out after 3 minutes. Click the button again — a second attempt usually succeeds.' : e.message;
+    out.innerHTML = '<div class="error-box">Could not score this take: ' + escHtml(vbMsg) + '. Please check your connection and try again.</div>';
     console.error('scoreVideoBrandAttempt error:', e);
   } finally {
     btn.disabled = false;
@@ -2809,8 +2819,11 @@ async function generateAgent0B() {
       + 'Format output as:\n[LINKEDIN HEADLINE SUGGESTION]\n\n[OPTIMIZED EXECUTIVE RESUME — FULL TEXT]\n\n[ATS KEYWORD AUDIT]\n\n[RECRUITER NOTES]';
 
     try {
+      var _obCtrl = new AbortController();
+      var _obTimeout = setTimeout(function(){ _obCtrl.abort(); }, 240000); // 4 min — ample ceiling, matches Agent 1/4/8 tier for up-to-8000-token output
       var r = await fetch('https://govedge-proxy.cssceo.workers.dev', {
         method: 'POST',
+        signal: _obCtrl.signal,
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
@@ -2820,6 +2833,7 @@ async function generateAgent0B() {
           messages: [{role: 'user', content: prompt}]
         })
       });
+      clearTimeout(_obTimeout);
       if (!r.ok) throw new Error('HTTP ' + r.status);
       var reader = r.body.getReader();
       var decoder = new TextDecoder();
@@ -2859,7 +2873,8 @@ async function generateAgent0B() {
         if (!firstOutput) firstOutput = fullText;
       }
     } catch(e) {
-      allOutputs[pathKey] = 'Error generating resume for path "' + pname + '": ' + e.message + (e.partialText ? '\n\n[Partial output received before interruption:]\n' + e.partialText : '');
+      allOutputs[pathKey] = 'Error generating resume for path "' + pname + '": ' + ((e.name === 'AbortError') ? 'Generation timed out after 4 minutes.' : e.message) + (e.partialText ? '\n\n[Partial output received before interruption:]\n' + e.partialText : '');
+      clearTimeout(_obTimeout);
     }
   }
 
@@ -3552,8 +3567,11 @@ async function startTextMock() {
       : '';
     var prompt = 'You are a senior GovCon executive interviewer preparing a rigorous mock interview. This candidate is interviewing for a government contracting role — ground every question in that reality (programs, contract vehicles, clearance, past performance, compliance) rather than generic commercial framing. Based on the Interview Intelligence Brief below, generate exactly 10 interview questions in this order:\n\n1. Company/Program Question 1 (specific to this company\'s programs, contracts, or situation)\n2. Company/Program Question 2 (specific to this company)\n3. Leadership Judgment Question 1 (behavioral, past program experience)\n4. Leadership Judgment Question 2 (situational, how would you handle)\n5. Leadership Judgment Question 3 (values, philosophy, style)\n6. Technical/Functional Question 1 (specific to the role requirements — past performance, capture, or compliance as applicable)\n7. Technical/Functional Question 2 (specific to the role)\n8. Objection/Challenge Question 1 (probe a potential weakness or gap in their background, including clearance or compliance gaps if relevant)\n9. Objection/Challenge Question 2 (contrarian — challenge a claim they\'ve made or will make)\n10. Closing Question (what questions do you have for us / why should we hire you)\n' + (customQsList.length > 0 ? '\nThen add ' + customQsList.length + ' more questions numbered Q11 onward from the custom list, labeled (Custom).' : '') + '\n\nFormat each as: Q[number] ([TYPE]): [question text]\n\nBe specific, challenging, realistic. No generic questions.\n\nINTERVIEW INTELLIGENCE BRIEF:\n' + brief + '\n\n' + (context ? 'ADDITIONAL PROBE AREAS:\n' + context : '') + customQsSection;
 
+    var _stmCtrl = new AbortController();
+    var _stmTimeout = setTimeout(function(){ _stmCtrl.abort(); }, 150000); // 2.5 min — ample ceiling for 10-question generation
     var r = await fetch('https://govedge-proxy.cssceo.workers.dev', {
       method: 'POST',
+      signal: _stmCtrl.signal,
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
@@ -3563,6 +3581,7 @@ async function startTextMock() {
         messages: [{role: 'user', content: prompt}]
       })
     });
+    clearTimeout(_stmTimeout);
 
     if (!r.ok) { var errBody = await r.json().catch(function(){return {};}); throw new Error((errBody.error && errBody.error.message) || 'HTTP ' + r.status); }
     var d = await r.json();
@@ -3614,7 +3633,7 @@ async function startTextMock() {
     if (area) {
       var errEl = document.createElement('div');
       errEl.className = 'error-box';
-      errEl.textContent = 'Error generating questions: ' + e.message + '. Please try again.';
+      errEl.textContent = 'Error generating questions: ' + ((e.name === 'AbortError') ? 'Generation timed out after 2.5 minutes. Please try again.' : e.message + '. Please try again.');
       area.appendChild(errEl);
     }
     console.error('startTextMock error:', e);
@@ -3719,8 +3738,11 @@ async function submitTextMockAnswer(qIndex) {
   var prompt = 'The executive is practicing for a real interview. Evaluate this answer:\n\nQUESTION (' + q.type.toUpperCase() + '): ' + q.text + '\n\nANSWER: ' + answer + '\n\nINTERVIEW BRIEF CONTEXT:\n' + (textMockState.brief || 'Not provided') + '\n\nProvide:\n1. RATING: [1-10]/10 on a single line\n2. What worked well (2-3 bullets)\n3. What to strengthen (2-3 specific, actionable bullets)\n4. A stronger 2-sentence version of the answer opening\n\nBe direct and honest. Rate a 7 only if it genuinely earns it.';
 
   try {
+    var _stmaCtrl = new AbortController();
+    var _stmaTimeout = setTimeout(function(){ _stmaCtrl.abort(); }, 120000); // 2 min — ample ceiling for short per-answer feedback
     var r = await fetch('https://govedge-proxy.cssceo.workers.dev', {
       method: 'POST',
+      signal: _stmaCtrl.signal,
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
@@ -3730,6 +3752,7 @@ async function submitTextMockAnswer(qIndex) {
         messages: [{role: 'user', content: prompt}]
       })
     });
+    clearTimeout(_stmaTimeout);
 
     if (!r.ok) { var errBody = await r.json().catch(function(){return {};}); throw new Error((errBody.error && errBody.error.message) || 'HTTP ' + r.status); }
     var d = await r.json();
@@ -3802,7 +3825,7 @@ async function submitTextMockAnswer(qIndex) {
   } catch(e) {
     submitBtn.disabled = false;
     submitBtn.innerHTML = '<span>Submit Answer →</span>';
-    feedbackEl.innerHTML = '<div class="error-box">Error getting feedback: ' + escHtml(e.message) + '. Please try again.</div>';
+    feedbackEl.innerHTML = '<div class="error-box">Error getting feedback: ' + ((e.name === 'AbortError') ? 'Generation timed out after 2 minutes.' : escHtml(e.message)) + '. Please try again.</div>';
     console.error('submitTextMockAnswer error:', e);
   }
 }
@@ -3823,8 +3846,11 @@ async function generateTextMockSummary() {
 
     var prompt = 'You just completed a full mock interview evaluation. Here are all the questions and answers:\n\n' + allQA + '\n\nBrief context:\n' + textMockState.brief.substring(0, 1000) + '\n\nProduce a comprehensive performance summary:\n\nOVERALL PERFORMANCE RATING: [X]/10\n\nTOP 3 STRENGTHS demonstrated across the interview\n\nTOP 3 DEVELOPMENT PRIORITIES before the real interview\n\nPATTERNS: What themes or habits showed up repeatedly (good and bad)?\n\nCRITICAL WATCH-OUTS: One or two things that could cost them the offer if not fixed\n\nFINAL COACHING NOTE: One direct, honest paragraph about their readiness for this interview and what to do in the next 48 hours';
 
+    var _tmsCtrl = new AbortController();
+    var _tmsTimeout = setTimeout(function(){ _tmsCtrl.abort(); }, 150000); // 2.5 min — ample ceiling for full-interview summary
     var r = await fetch('https://govedge-proxy.cssceo.workers.dev', {
       method: 'POST',
+      signal: _tmsCtrl.signal,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -3835,6 +3861,7 @@ async function generateTextMockSummary() {
         messages: [{role: 'user', content: prompt}]
       })
     });
+    clearTimeout(_tmsTimeout);
 
     var d = await r.json();
     if (d.error) throw new Error(d.error.message);
@@ -3860,7 +3887,8 @@ async function generateTextMockSummary() {
     summaryDiv.appendChild(sumActions);
 
   } catch(e) {
-    summaryDiv.innerHTML = '<div class="error-box">Error generating summary: ' + escHtml(e.message) + '</div>';
+    var tmsMsg = (e.name === 'AbortError') ? 'Generation timed out after 2.5 minutes. Please try again.' : e.message;
+    summaryDiv.innerHTML = '<div class="error-box">Error generating summary: ' + escHtml(tmsMsg) + '</div>';
     console.error('Summary error:', e);
   }
 }
@@ -4516,8 +4544,11 @@ async function generateMockDebrief() {
   messages.push({ role: 'user', content: userContent });
 
   try {
+    var _debCtrl = new AbortController();
+    var _debTimeout = setTimeout(function(){ _debCtrl.abort(); }, 240000); // 4 min — ample ceiling; multi-image analysis + up to 8000 tokens of output
     var r = await fetch('https://govedge-proxy.cssceo.workers.dev', {
       method: 'POST',
+      signal: _debCtrl.signal,
       headers: {
         'Content-Type': 'application/json',
         },
@@ -4529,6 +4560,7 @@ async function generateMockDebrief() {
         messages: messages
       })
     });
+    clearTimeout(_debTimeout);
 
     if (!r.ok) {
       var errBody = await r.json().catch(function(){ return {}; });
@@ -4587,10 +4619,13 @@ async function generateMockDebrief() {
     STATE.savedOutputs['3a_debrief'] = fullText;
     saveState();
     saveToCloud('output_3a_debrief', fullText);
+    clearTimeout(_debTimeout);
 
   } catch(e) {
+    clearTimeout(_debTimeout);
     textEl.classList.remove('streaming-cursor');
-    textEl.textContent = 'Connection error: ' + e.message + '. Please try again.';
+    var debMsg = (e.name === 'AbortError') ? 'Generation timed out after 4 minutes. Please try again.' : ('Connection error: ' + e.message + '. Please try again.');
+    textEl.textContent = debMsg;
     btn.disabled = false;
     btn.innerHTML = '<span>Generate AI Debrief</span>';
     console.error('Debrief fetch error:', e);
@@ -4829,20 +4864,24 @@ async function generateInterpretationGuide() {
   var prompt = 'You are an expert executive career coach generating a personalized Career Capital Assessment Interpretation Guide for ' + name + '. Use the scores below to write a complete personalized interpretation. Write directly to ' + name + ' using their first name throughout. Be specific to their actual scores — reference the exact percentages and labels. Be direct, honest, and actionable. Do not be vague or generic.\n\nSCORES:\n' + scoreSummary + '\n\nGenerate a complete interpretation guide with these exact sections:\n\n# Your Career Capital Profile — ' + name + '\n\nStart with a 3-4 sentence overview of what their profile means at the highest level. Identify their top 3 differentiators and one area that needs attention. Make it personal and direct.\n\n## Your Scoring Scale\nBriefly explain the 5 labels: Exceptional (80-100%), Strong (65-79%), Proficient (50-64%), Developing (35-49%), Growth Area (0-34%).\n\n## Assessment I — Executive Core Skills Inventory (ECSI)\nFor each of the 5 dimensions, write 3-4 sentences: what their specific score means for them, what it means for their job search, and one specific action. Use their actual percentage. Be direct — if a score is low, say so clearly and give them a real path forward.\n\n## Assessment II — Transferable Skills Profiler (TSP)\nSame format for all 5 dimensions.\n\n## Assessment III — Executive Values & Leadership Style Inventory (EVLSI)\nSame format. Identify their Leadership Brand (highest scoring dimension) and name it explicitly.\n\n## Assessment IV — Executive Emotional Intelligence Inventory (EEII)\nSame format for all 5 dimensions.\n\n## Your Career Capital Strengths\nList their top 5 dimensions by score. For each: the score, the label, and one sentence about how to use it in their search.\n\n## Your Leadership Brand\nName the brand based on their highest EVLSI score. Write 2-3 sentences about how to use it as an anchor across all job search materials.\n\n## Gap Strategy\nFor any dimension scoring below 50%: name it, give it a label (Build It / Reframe It / Name It), and write 2 specific sentences about what to do.\n\n## Your Differentiation Statement\nWrite a draft 2-3 sentence Differentiation Statement built from their Leadership Brand, top 2-3 dimensions, and a placeholder for their best achievement. Format it as a ready-to-use draft they can personalize.\n\n## 5 Priority Actions for Your Search\nFive specific, numbered, actionable steps based on their actual profile. Make them concrete and tailored to their specific scores.\n\nWrite in a direct, peer-to-peer tone. No jargon. No hedging. Speak to them as a trusted advisor who has read their scores carefully.';
 
   try {
+    var _interpCtrl = new AbortController();
+    var _interpTimeout = setTimeout(function(){ _interpCtrl.abort(); }, 300000); // 5 min — ample ceiling for this 8-section, longest-form guide in the app
     var r = await fetch('https://govedge-proxy.cssceo.workers.dev', {
       method: 'POST',
+      signal: _interpCtrl.signal,
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 8000,
+        stream: true,
         system: 'You are an expert executive career coach. Generate personalized, direct, actionable interpretation guides based on assessment scores. Always reference specific percentages. Never be generic. Write as a trusted advisor who has studied the results carefully.',
         messages: [{role:'user', content: prompt}]
       })
     });
 
-    clearInterval(progressTimer);
-
     if (!r.ok) {
+      clearInterval(progressTimer);
+      clearTimeout(_interpTimeout);
       var err = await r.json().catch(function(){return {error:{message:'Request failed'}};});
       out.innerHTML = '<div class="error-box">Error: ' + escHtml((err.error||{}).message||'Unknown error') + '<br>Please try again.</div>';
       btn.disabled = false;
@@ -4850,17 +4889,51 @@ async function generateInterpretationGuide() {
       return;
     }
 
-    // Parse non-streaming JSON response
-    var respData = await r.json().catch(function(){ return null; });
-    if (!respData || respData.error) {
-      var errMsg = respData && respData.error ? respData.error.message : 'Invalid response from server';
-      out.innerHTML = '<div class="error-box">Error: ' + escHtml(errMsg) + '<br>Please try again.</div>';
+    var reader = r.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '', fullText = '', sawMessageStop = false;
+    var firstChunk = true;
+
+    while (true) {
+      var result = await reader.read();
+      if (result.done) break;
+      buffer += decoder.decode(result.value, {stream: true});
+      var lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (!line.startsWith('data: ')) continue;
+        var data = line.slice(6);
+        try {
+          var parsed = JSON.parse(data);
+          if (parsed.type === 'content_block_delta' && parsed.delta && parsed.delta.text) {
+            if (firstChunk) {
+              clearInterval(progressTimer);
+              out.innerHTML = '<div id="interp-stream" style="font-size:13px;line-height:1.9;color:var(--text-primary);white-space:pre-wrap;font-family:\'DM Sans\',sans-serif"></div>';
+              firstChunk = false;
+            }
+            fullText += parsed.delta.text;
+            var streamEl = document.getElementById('interp-stream');
+            if (streamEl) streamEl.textContent = fullText;
+          } else if (parsed.type === 'message_stop') {
+            sawMessageStop = true;
+          } else if (parsed.type === 'error') {
+            throw new Error((parsed.error && parsed.error.message) || 'The model reported an error mid-stream.');
+          }
+        } catch(pe) { if (!(pe instanceof SyntaxError)) throw pe; }
+      }
+    }
+
+    clearInterval(progressTimer);
+    clearTimeout(_interpTimeout);
+
+    if (!sawMessageStop) {
+      var partialGuide = fullText ? '<br><br><strong>What was received before the interruption:</strong><div class="output-box" style="margin-top:8px">' + escHtml(fullText) + '</div>' : '';
+      out.innerHTML = '<div class="error-box"><strong>The connection was interrupted before your guide finished generating.</strong> Click Generate again — a second attempt usually succeeds.' + partialGuide + '</div>';
       btn.disabled = false;
       btn.innerHTML = '<span>Generate My Interpretation Guide</span>';
       return;
     }
-
-    var fullText = (respData.content || []).map(function(b){ return b.text || ''; }).join('');
 
     if (!fullText || fullText.length < 50) {
       out.innerHTML = '<div class="error-box">The guide was empty. Please try again.</div>';
@@ -4913,7 +4986,8 @@ async function generateInterpretationGuide() {
 
   } catch(e) {
     clearInterval(progressTimer);
-    out.innerHTML = '<div class="error-box">Connection error: ' + escHtml(e.message) + '<br><br>Please check your connection and try again.</div>';
+    var interpMsg = (e.name === 'AbortError') ? 'Generation timed out after 5 minutes. Click Generate again — a second attempt usually succeeds.' : e.message;
+    out.innerHTML = '<div class="error-box">Connection error: ' + escHtml(interpMsg) + '<br><br>Please check your connection and try again.</div>';
     btn.disabled = false;
     btn.innerHTML = '<span>Generate My Interpretation Guide</span>';
     console.error('Interpretation guide error:', e);
@@ -6490,9 +6564,12 @@ async function generateAgent2_5() {
     + 'Output the complete customized resume. No commentary — just the resume.';
 
   var customText = '';
+  var _a25Ctrl1 = new AbortController();
+  var _a25Timeout1 = setTimeout(function(){ _a25Ctrl1.abort(); }, 240000); // 4 min — ample ceiling, up to 8000 tokens
   try {
     var r1 = await fetch('https://govedge-proxy.cssceo.workers.dev', {
       method: 'POST',
+      signal: _a25Ctrl1.signal,
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
@@ -6502,6 +6579,7 @@ async function generateAgent2_5() {
         messages: [{role:'user', content: resumePrompt}]
       })
     });
+    clearTimeout(_a25Timeout1);
     if (!r1.ok) throw new Error('HTTP ' + r1.status);
     var reader1 = r1.body.getReader();
     var decoder = new TextDecoder();
@@ -6526,8 +6604,10 @@ async function generateAgent2_5() {
       throw err1;
     }
   } catch(e) {
+    clearTimeout(_a25Timeout1);
+    var msg1 = (e.name === 'AbortError') ? 'Generation timed out after 4 minutes.' : e.message;
     var partial1 = e.partialText ? '<br><br><strong>What was received before the interruption:</strong><div class="output-box" style="margin-top:8px">' + escHtml(e.partialText) + '</div>' : '';
-    if (outCustom) outCustom.innerHTML = '<div class="error-box">Error generating resume: ' + escHtml(e.message) + partial1 + '</div>';
+    if (outCustom) outCustom.innerHTML = '<div class="error-box">Error generating resume: ' + escHtml(msg1) + partial1 + '</div>';
     btn.disabled = false; btn.innerHTML = '<span>✦ Generate Customized Resume + Change Log →</span>';
     return;
   }
@@ -6558,9 +6638,12 @@ async function generateAgent2_5() {
     + '— Recommended follow-up timing';
 
   var diffText = '';
+  var _a25Ctrl2 = new AbortController();
+  var _a25Timeout2 = setTimeout(function(){ _a25Ctrl2.abort(); }, 180000); // 3 min — ample ceiling for ATS audit
   try {
     var r2 = await fetch('https://govedge-proxy.cssceo.workers.dev', {
       method: 'POST',
+      signal: _a25Ctrl2.signal,
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
@@ -6570,6 +6653,7 @@ async function generateAgent2_5() {
         messages: [{role:'user', content: diffPrompt}]
       })
     });
+    clearTimeout(_a25Timeout2);
     if (!r2.ok) throw new Error('HTTP ' + r2.status);
     var reader2 = r2.body.getReader();
     var buf2 = '';
@@ -6593,8 +6677,10 @@ async function generateAgent2_5() {
       throw err2;
     }
   } catch(e) {
+    clearTimeout(_a25Timeout2);
+    var msg2 = (e.name === 'AbortError') ? 'Generation timed out after 3 minutes.' : e.message;
     var partial2 = e.partialText ? '<br><br><strong>What was received before the interruption:</strong><div class="output-box" style="margin-top:8px">' + escHtml(e.partialText) + '</div>' : '';
-    if (outDiff) outDiff.innerHTML = '<div class="error-box">Error generating change log: ' + escHtml(e.message) + partial2 + '</div>';
+    if (outDiff) outDiff.innerHTML = '<div class="error-box">Error generating change log: ' + escHtml(msg2) + partial2 + '</div>';
     diffText = ''; // do not silently persist a truncated change log as final
   }
 
@@ -6695,8 +6781,11 @@ async function submitResumeFeedback() {
     + 'Output the complete corrected resume in full. No commentary, no explanation of what changed — just the corrected resume text.';
 
   try {
+    var _rfCtrl = new AbortController();
+    var _rfTimeout = setTimeout(function(){ _rfCtrl.abort(); }, 180000); // 3 min — ample ceiling for full resume regeneration
     var r = await fetch('https://govedge-proxy.cssceo.workers.dev', {
       method: 'POST',
+      signal: _rfCtrl.signal,
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
@@ -6705,6 +6794,7 @@ async function submitResumeFeedback() {
         messages: [{role:'user', content: prompt}]
       })
     });
+    clearTimeout(_rfTimeout);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     var d = await r.json();
     var correctedText = (d.content||[]).map(function(b){return b.text||'';}).join('');
@@ -6717,8 +6807,10 @@ async function submitResumeFeedback() {
     var body = document.getElementById('agentBody');
     if (body) body.innerHTML = renderAgent2_5();
   } catch(e) {
+    clearTimeout(_rfTimeout);
+    var rfMsg = (e.name === 'AbortError') ? 'Generation timed out after 3 minutes.' : e.message;
     console.error('Resume feedback regeneration failed:', e);
-    showToast('Could not regenerate automatically — your feedback was saved for review. Error: ' + e.message);
+    showToast('Could not regenerate automatically — your feedback was saved for review. Error: ' + rfMsg);
     closeResumeFeedback();
   }
 }
@@ -6978,8 +7070,11 @@ async function triggerCompanyResearch() {
   var prompt = 'Act as a GovCon market research analyst.\n\nFor each company listed below, produce a concise research brief:\n\nTARGET ROLE: ' + (targetRole||'Senior Executive') + '\nDOMAIN: ' + (industries||'Not specified') + '\n\nCOMPANIES TO RESEARCH:\n' + companyText + '\n\nFor EACH company, format as:\n\n[COMPANY NAME]\nContractor Tier & Business Model: (prime, mid-tier, or small business/set-aside; 2 sentences)\nSize & Ownership: (revenue range, headcount, public/private/employee-owned/PE-backed)\nCurrent Situation: Recent contract awards, recompetes, leadership changes, program news (2-3 bullets)\nOpportunity Signals: Why this company might need someone at the target level right now — new award, recompete, program expansion\nFit Rating: Strong / Moderate / Monitor — with 1 sentence explanation\nKey Contacts to Research: Types of people to target (e.g., program executive, BD/capture lead, VP of Talent Acquisition)\n\nBe specific. Use publicly available, unclassified information only. Flag any company you have insufficient data on.';
 
   try {
+    var _crCtrl = new AbortController();
+    var _crTimeout = setTimeout(function(){ _crCtrl.abort(); }, 180000); // 3 min — ample ceiling for multi-company research brief
     var r = await fetch('https://govedge-proxy.cssceo.workers.dev', {
       method: 'POST',
+      signal: _crCtrl.signal,
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
@@ -6989,6 +7084,7 @@ async function triggerCompanyResearch() {
         messages: [{role:'user', content: prompt}]
       })
     });
+    clearTimeout(_crTimeout);
     var data = await r.json();
     if (data.error) throw new Error(data.error.message || 'API error');
     var text = data.content ? data.content.map(function(b){return b.text||'';}).join('') : '';
@@ -7005,8 +7101,10 @@ async function triggerCompanyResearch() {
     // Also populate the companylist field if it was sparse
     showToast('✓ Company research complete — review below before generating Agent 7.');
   } catch(e) {
+    clearTimeout(_crTimeout);
+    var crMsg = (e.name === 'AbortError') ? 'Research timed out after 3 minutes. Please try again with fewer companies at once.' : (e.message + '. Please try again.');
     console.error('Company research error:', e);
-    if (resultsEl) { resultsEl.style.display = 'block'; resultsEl.textContent = 'Error: ' + e.message + '. Please try again.'; }
+    if (resultsEl) { resultsEl.style.display = 'block'; resultsEl.textContent = 'Error: ' + crMsg; }
   }
 
   _companyResearchInProgress = false;
@@ -7490,55 +7588,67 @@ async function autoGenerateAgent7Docs(marketIntelOutput) {
 }
 
 async function streamA7Doc(key, prompt, outEl) {
-  var r = await fetch('https://govedge-proxy.cssceo.workers.dev', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      stream: true,
-      system: SYSTEM,
-      messages: [{role:'user', content: prompt}]
-    })
-  });
-  if (!r.ok) {
-    var errBody = await r.json().catch(function(){return {};});
-    throw new Error((errBody.error && errBody.error.message) || 'HTTP ' + r.status);
-  }
-  var reader = r.body.getReader();
-  var decoder = new TextDecoder();
-  var buffer = '', fullText = '', sawMessageStop = false;
-  if (outEl) outEl.textContent = '';
-  while (true) {
-    var result = await reader.read();
-    if (result.done) break;
-    buffer += decoder.decode(result.value, {stream: true});
-    var lines = buffer.split('\n');
-    buffer = lines.pop();
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i];
-      if (line.startsWith('data: ')) {
-        var data = line.slice(6);
-        try {
-          var parsed = JSON.parse(data);
-          if (parsed.type === 'content_block_delta' && parsed.delta && parsed.delta.text) {
-            fullText += parsed.delta.text;
-            if (outEl) outEl.textContent = fullText;
-          } else if (parsed.type === 'message_stop') {
-            sawMessageStop = true;
-          } else if (parsed.type === 'error') {
-            throw new Error((parsed.error && parsed.error.message) || 'The model reported an error mid-stream.');
-          }
-        } catch(e) { if (!(e instanceof SyntaxError)) throw e; }
+  var _a7dCtrl = new AbortController();
+  var _a7dTimeout = setTimeout(function(){ _a7dCtrl.abort(); }, 150000); // 2.5 min — ample ceiling for a single ~2000-token document
+  try {
+    var r = await fetch('https://govedge-proxy.cssceo.workers.dev', {
+      method: 'POST',
+      signal: _a7dCtrl.signal,
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
+        stream: true,
+        system: SYSTEM,
+        messages: [{role:'user', content: prompt}]
+      })
+    });
+    if (!r.ok) {
+      var errBody = await r.json().catch(function(){return {};});
+      throw new Error((errBody.error && errBody.error.message) || 'HTTP ' + r.status);
+    }
+    var reader = r.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '', fullText = '', sawMessageStop = false;
+    if (outEl) outEl.textContent = '';
+    while (true) {
+      var result = await reader.read();
+      if (result.done) break;
+      buffer += decoder.decode(result.value, {stream: true});
+      var lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.startsWith('data: ')) {
+          var data = line.slice(6);
+          try {
+            var parsed = JSON.parse(data);
+            if (parsed.type === 'content_block_delta' && parsed.delta && parsed.delta.text) {
+              fullText += parsed.delta.text;
+              if (outEl) outEl.textContent = fullText;
+            } else if (parsed.type === 'message_stop') {
+              sawMessageStop = true;
+            } else if (parsed.type === 'error') {
+              throw new Error((parsed.error && parsed.error.message) || 'The model reported an error mid-stream.');
+            }
+          } catch(e) { if (!(e instanceof SyntaxError)) throw e; }
+        }
       }
     }
+    if (!sawMessageStop) {
+      var errDoc = new Error('The connection was interrupted before this document finished generating. Click Regenerate to retry.');
+      errDoc.partialText = fullText;
+      throw errDoc;
+    }
+    return fullText;
+  } catch(e) {
+    if (e.name === 'AbortError') {
+      throw new Error('Generation timed out after 2.5 minutes. Click Regenerate to retry.');
+    }
+    throw e;
+  } finally {
+    clearTimeout(_a7dTimeout);
   }
-  if (!sawMessageStop) {
-    var errDoc = new Error('The connection was interrupted before this document finished generating. Click Regenerate to retry.');
-    errDoc.partialText = fullText;
-    throw errDoc;
-  }
-  return fullText;
 }
 
 // ════════════════════════════════════════════════════════
@@ -8332,12 +8442,16 @@ function isAdmin() {
 }
 
 async function healthCheck() {
+  var _hcCtrl = new AbortController();
+  var _hcTimeout = setTimeout(function(){ _hcCtrl.abort(); }, 15000); // 15s — deliberately short; this is a fail-fast diagnostic ping, not a generation call
   try {
     var r = await fetch('https://govedge-proxy.cssceo.workers.dev', {
       method: 'POST',
+      signal: _hcCtrl.signal,
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({model:'claude-sonnet-4-6',max_tokens:5,messages:[{role:'user',content:'OK'}]})
     });
+    clearTimeout(_hcTimeout);
     var stateSizeKB = Math.round(JSON.stringify(STATE).length / 1024);
     var lsUsageKB   = Math.round((JSON.stringify(localStorage)).length / 1024);
     var agents      = (STATE.completedAgents||[]).filter(function(k){return isMainAgentId(k);}).length;
@@ -8351,8 +8465,10 @@ async function healthCheck() {
       console.info('[GovEdge healthCheck]', statusLine + 'OK ✓');
     }
   } catch(e) {
+    clearTimeout(_hcTimeout);
     // Only alert if proxy is completely unreachable
-    if (isAdmin()) showAdminAlert('API proxy unreachable: ' + e.message);
+    var hcMsg = (e.name === 'AbortError') ? 'no response within 15 seconds' : e.message;
+    if (isAdmin()) showAdminAlert('API proxy unreachable: ' + hcMsg);
   }
 }
 
