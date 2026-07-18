@@ -411,19 +411,51 @@ function persistAuthSession(data, fallbackEmail) {
   return currentUser;
 }
 
-var _refreshInFlight = null; // shared promise — prevents concurrent callers from racing to refresh with the same (soon-to-rotate) refresh token
+var _refreshInFlight = null; // shared promise — prevents concurrent callers *within this tab* from racing to refresh with the same (soon-to-rotate) refresh token
 
 async function refreshAuthSession() {
-  // If a refresh is already underway (e.g. the 10s debounced auto-save and a
-  // manual ☁ Save click both hit an expired token within the same moment),
-  // every caller awaits the SAME in-flight request instead of each firing
-  // their own. Supabase rotates refresh tokens on use, so two concurrent
-  // refresh calls with the same stored token would otherwise race — the
-  // second one fails with an invalid-token error even though the first just
-  // succeeded, and that failure was being treated as a real session expiry,
-  // forcibly signing the user out right after they'd just been re-authenticated.
+  // Layer 1 — same-tab: if a refresh is already underway (e.g. the 10s
+  // debounced auto-save and a manual ☁ Save click both hit an expired token
+  // within the same moment), every caller in THIS tab awaits the SAME
+  // in-flight request instead of each firing their own.
   if (_refreshInFlight) return _refreshInFlight;
+
+  // Layer 2 — cross-tab: this is a documented Supabase auth-js issue
+  // (supabase/auth-js#213) — if a client has GovEdge AI open in two tabs,
+  // each tab has its own independent JS memory, so Layer 1 alone doesn't
+  // help; both tabs read the same refresh_token from shared localStorage,
+  // and if both attempt to refresh around the same moment, the second
+  // request fails token-reuse detection even though the first just
+  // succeeded — and that failure was being treated as a real expiry,
+  // signing the user out of a tab that was actually fine. Supabase grants a
+  // ~10 second reuse-interval grace window specifically for this scenario,
+  // so if another tab set the lock within the last 8 seconds, wait briefly
+  // and adopt whatever token that tab lands on instead of racing it.
+  var lockRaw = localStorage.getItem('ge_refresh_lock');
+  var lockAge = lockRaw ? (Date.now() - parseInt(lockRaw, 10)) : Infinity;
+  if (lockAge >= 0 && lockAge < 8000) {
+    for (var attempt = 0; attempt < 10; attempt++) {
+      await new Promise(function(res){ setTimeout(res, 300); });
+      var stillLocked = localStorage.getItem('ge_refresh_lock');
+      var stillLockAge = stillLocked ? (Date.now() - parseInt(stillLocked, 10)) : Infinity;
+      if (!stillLocked || stillLockAge >= 8000) break; // other tab's lock cleared or expired — safe to proceed below
+    }
+    // Re-read whatever token the other tab landed on. If it refreshed
+    // successfully, this is already fresh and we skip a redundant request.
+    var freshToken = localStorage.getItem('ge_sb_token');
+    if (freshToken) {
+      try {
+        var payload = JSON.parse(atob(freshToken.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+        if (payload.exp && Date.now() < (payload.exp * 1000 - 60000)) return freshToken;
+      } catch(e) {}
+    }
+    // Fall through to a real refresh below if the other tab's attempt
+    // didn't leave us with a valid token (e.g. it failed for a genuine
+    // reason, or the lock was simply stale).
+  }
+
   _refreshInFlight = (async function() {
+    localStorage.setItem('ge_refresh_lock', String(Date.now()));
     try {
       var refreshToken = localStorage.getItem('ge_sb_refresh_token');
       if (!refreshToken) return null;
@@ -438,6 +470,7 @@ async function refreshAuthSession() {
       return d.access_token;
     } finally {
       _refreshInFlight = null;
+      try { localStorage.removeItem('ge_refresh_lock'); } catch(e) {}
     }
   })();
   return _refreshInFlight;
@@ -6981,7 +7014,16 @@ function extractPdfText(arrayBuffer, filename, textArea, statusEl) {
 
 async function _doPdfExtract(arrayBuffer, filename, textArea, statusEl) {
   try {
-    var pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+    // isEvalSupported:false disables PDF.js's eval()-based font glyph compiler
+    // (font_loader.js) — the officially documented fix for CVE-2024-4367, an
+    // arbitrary JavaScript execution vulnerability reachable via a maliciously
+    // crafted PDF. Since this app parses résumés uploaded by real clients from
+    // real sources, that's a genuinely reachable attack surface, not a
+    // theoretical one. This is the vendor-endorsed mitigation and does not
+    // require a library version change (PDF.js 4.x, which also fixes this,
+    // dropped classic <script> tag support entirely and would require
+    // restructuring this app's loading pattern).
+    var pdf = await pdfjsLib.getDocument({data: arrayBuffer, isEvalSupported: false}).promise;
     var allText = '';
     for (var i = 1; i <= pdf.numPages; i++) {
       var page = await pdf.getPage(i);
@@ -7008,7 +7050,10 @@ function extractDocxText(arrayBuffer, filename, textArea, statusEl) {
     return;
   }
   var s = document.createElement('script');
-  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js';
+  // 1.11.0 patches CVE-2025-11849 (directory traversal via a crafted docx
+  // referencing an external file link). Same filename/format as 1.6.0, so
+  // this is a safe drop-in version bump — no other code changes needed.
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.11.0/mammoth.browser.min.js';
   s.onload = function() { _doDocxExtract(arrayBuffer, filename, textArea, statusEl); };
   s.onerror = function() {
     if (statusEl) statusEl.innerHTML = '<div class="error-box">DOCX parsing library could not load. Please save as .txt and upload, or paste directly.</div>';
