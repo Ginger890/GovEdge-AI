@@ -411,18 +411,36 @@ function persistAuthSession(data, fallbackEmail) {
   return currentUser;
 }
 
+var _refreshInFlight = null; // shared promise — prevents concurrent callers from racing to refresh with the same (soon-to-rotate) refresh token
+
 async function refreshAuthSession() {
-  var refreshToken = localStorage.getItem('ge_sb_refresh_token');
-  if (!refreshToken) return null;
-  var r = await fetchWithTimeout(SB_URL+'/auth/v1/token?grant_type=refresh_token', {
-    method:'POST', headers:{'Content-Type':'application/json','apikey':SB_KEY},
-    body:JSON.stringify({refresh_token:refreshToken})
-  }, 20000);
-  var d = await r.json().catch(function(){ return {}; });
-  if (!r.ok || !d.access_token) throw new Error(d.error_description || d.msg || d.error || 'Session refresh failed.');
-  persistAuthSession(d, localStorage.getItem('ge_sb_email') || '');
-  updateUserUI();
-  return d.access_token;
+  // If a refresh is already underway (e.g. the 10s debounced auto-save and a
+  // manual ☁ Save click both hit an expired token within the same moment),
+  // every caller awaits the SAME in-flight request instead of each firing
+  // their own. Supabase rotates refresh tokens on use, so two concurrent
+  // refresh calls with the same stored token would otherwise race — the
+  // second one fails with an invalid-token error even though the first just
+  // succeeded, and that failure was being treated as a real session expiry,
+  // forcibly signing the user out right after they'd just been re-authenticated.
+  if (_refreshInFlight) return _refreshInFlight;
+  _refreshInFlight = (async function() {
+    try {
+      var refreshToken = localStorage.getItem('ge_sb_refresh_token');
+      if (!refreshToken) return null;
+      var r = await fetchWithTimeout(SB_URL+'/auth/v1/token?grant_type=refresh_token', {
+        method:'POST', headers:{'Content-Type':'application/json','apikey':SB_KEY},
+        body:JSON.stringify({refresh_token:refreshToken})
+      }, 20000);
+      var d = await r.json().catch(function(){ return {}; });
+      if (!r.ok || !d.access_token) throw new Error(d.error_description || d.msg || d.error || 'Session refresh failed.');
+      persistAuthSession(d, localStorage.getItem('ge_sb_email') || '');
+      updateUserUI();
+      return d.access_token;
+    } finally {
+      _refreshInFlight = null;
+    }
+  })();
+  return _refreshInFlight;
 }
 
 
@@ -1090,8 +1108,8 @@ function renderAgent0B() {
     }
     html += escHtml(pname) + ' — Base Resume</div>';
     html += '<div class="output-actions">';
-    html += '<button class="btn-action" onclick="copyOutputByKey(\'' + pathKey + '\',\'' + escHtml(pname) + '\')">⎘ Copy</button>';
-    html += '<button class="btn-action" onclick="downloadOutputByKey(\'' + pathKey + '\',\'' + escHtml(pname) + '\')">↓ Download .doc</button>';
+    html += '<button class="btn-action" onclick="copyOutputByKey(\'' + pathKey + '\',\'' + escJs(pname) + '\')">⎘ Copy</button>';
+    html += '<button class="btn-action" onclick="downloadOutputByKey(\'' + pathKey + '\',\'' + escJs(pname) + '\')">↓ Download .doc</button>';
     html += '<button class="btn-action" onclick="saveResumePath(\'' + pathKey + '\')">☁ Save</button>';
     html += '</div></div>';
     html += '<div class="output-box" id="output_0b_' + pathKey + '">';
@@ -2603,6 +2621,23 @@ function dlOutput(id, filename) {
 
 function escHtml(t) {
   return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Escapes a value for safe embedding inside a single-quoted JS string literal
+// that itself sits inside an inline HTML event-handler attribute (onclick="fn('...')").
+// escHtml() alone is NOT sufficient here: HTML-entity-decoding of the attribute
+// happens BEFORE the JS parser ever sees the string, so an entity like &#39;
+// is decoded back to a literal quote and still breaks the string. This must
+// escape backslashes first, then quotes, then strip newlines (which would
+// otherwise terminate the string literal outright).
+function escJs(t) {
+  return String(t)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '&quot;')
+    .replace(/\r?\n/g, ' ')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 var SYSTEM = 'You are GovEdge AI\u2122, an elite executive career operating system. Produce precise, specific, executive-level output that is immediately usable. No generic language. No filler. Every sentence is specific to the executive\'s background and situation. Format with clear section headers and em dashes for sub-items. This output will be copied, saved, and used directly.';
@@ -5818,7 +5853,7 @@ function renderLIPostingCalendar(text) {
       html += '<div class="li-cal-card">';
       html += '<div class="li-cal-date">Week ' + it.week + '</div>';
       html += '<div class="li-cal-topic">' + escHtml(it.topic) + '</div>';
-      html += '<div class="li-cal-actions"><button class="btn-action" onclick="downloadLIReminder(' + it.week + ',\'' + escHtml(it.topic).replace(/'/g,"\\'") + '\',\'' + escHtml(cadenceMatch) + '\')">📅 Add Reminder</button></div>';
+      html += '<div class="li-cal-actions"><button class="btn-action" onclick="downloadLIReminder(' + it.week + ',\'' + escJs(it.topic) + '\',\'' + escJs(cadenceMatch) + '\')">📅 Add Reminder</button></div>';
       html += '</div>';
     });
     html += '</div>';
