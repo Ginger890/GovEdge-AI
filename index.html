@@ -426,20 +426,6 @@ async function refreshAuthSession() {
 }
 
 
-async function sbFetch(path, method, body) {
-  method = method || 'GET';
-  var token = localStorage.getItem('ge_sb_token') || SB_KEY;
-  var opts = {
-    method: method,
-    headers: {'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+token,'Prefer':method==='POST'?'resolution=merge-duplicates,return=minimal':''}
-  };
-  if (body) opts.body = JSON.stringify(body);
-  var r = await fetchWithTimeout(SB_URL + path, opts, 20000);
-  if (!r.ok) { var e = await r.text(); throw new Error(e); }
-  var txt = await r.text();
-  try { return txt ? JSON.parse(txt) : null; } catch(e) { console.warn('sbFetch parse failed'); return null; }
-}
-
 function showAuthModal() {
   var existing = document.getElementById('auth-modal');
   if (existing) existing.remove();
@@ -827,8 +813,6 @@ function lsLoad() {
   try { secondary = localStorage.getItem(LS_KEY); } catch(e2) {}
   return safeJsonParse(secondary, null);
 }
-function lsClear() { try { localStorage.removeItem(LS_KEY); localStorage.removeItem('ge_app_state'); } catch(e) {} }
-
 var STATE = {
   plan:null, currentAgent:null, completedAgents:[], savedOutputs:{}, savedInputs:{},
   checklistState:{}, confirmedFields:{}, dataToolOpen:{},
@@ -1353,7 +1337,6 @@ function restoreVideoBrandPanel() {
 
 // ── Agent 11 — Job Openings Research ──
 function renderAgent6H() {
-  var ag = AGENTS['6h'];
   var ccs = STATE.savedOutputs['0'] || '';
   var savedTargetrole = (STATE.savedInputs||{})['6h_targetrole'] || (STATE.savedInputs||{})['1_targetrole'] || '';
   var savedIndustries = (STATE.savedInputs||{})['6h_industries'] || (STATE.savedInputs||{})['1_industries'] || '';
@@ -2560,25 +2543,6 @@ function getInp(agentId, fieldId) {
   return val;
 }
 
-function toggleDataTool(id) {
-  if (!STATE.dataToolOpen) STATE.dataToolOpen = {};
-  STATE.dataToolOpen[id] = !STATE.dataToolOpen[id];
-  var b = document.getElementById('dtbody_'+id), a = document.getElementById('dtarrow_'+id);
-  if (b) b.classList.toggle('open',STATE.dataToolOpen[id]);
-  if (a) a.style.transform = STATE.dataToolOpen[id]?'rotate(180deg)':'';
-  saveState();
-}
-
-function toggleConfirm(id) {
-  if (!STATE.confirmedFields) STATE.confirmedFields = {};
-  STATE.confirmedFields[id] = !STATE.confirmedFields[id];
-  var box = document.getElementById('conf_'+id);
-  var wrap = document.getElementById('inpwrap_'+id);
-  if (box) { box.classList.toggle('checked',STATE.confirmedFields[id]); box.querySelector('.confirm-check-icon').textContent = STATE.confirmedFields[id]?'✓':''; }
-  if (wrap) wrap.style.display = STATE.confirmedFields[id]?'block':'none';
-  saveState();
-}
-
 function toggleCheck(agentId, idx) {
   if (!STATE.checklistState) STATE.checklistState = {};
   if (!STATE.checklistState[agentId]) STATE.checklistState[agentId] = {};
@@ -2803,7 +2767,6 @@ function buildAgent0Prompt(asmt,resume,targetrole,selfassess) {
 async function generateAgent0B() {
   if (!canGenerate()) return;
   var btn = document.getElementById('btnGen_0b');
-  var out = document.getElementById('output_0b');
   var resume = (STATE.savedInputs||{})['0_resume'] || '';
   var ccs = STATE.savedOutputs['0'] || '';
   var a075out = STATE.savedOutputs['0.75'] || '';
@@ -2811,8 +2774,8 @@ async function generateAgent0B() {
   var achievements = getInp('0b','achievements');
   var keywords = getInp('0b','keywords');
   var style = getInp('0b','style') || 'Executive Traditional';
-  if (!resume) { if(out) out.innerHTML = '<div class="error-box">No resume found. Please return to Agent 1 and paste your resume in Step 3 first.</div>'; return; }
-  if (!targetrole && !a075out) { if(out) out.innerHTML = '<div class="error-box">Please enter your target role or complete Agent 2 first.</div>'; return; }
+  if (!resume) { showToast('No resume found. Please return to Agent 1 and paste your resume in Step 3 first.'); return; }
+  if (!targetrole && !a075out) { showToast('Please enter your target role or complete Agent 2 first.'); return; }
 
   // Determine paths to build resumes for
   var selectedPaths = STATE.selectedPaths || [];
@@ -2822,7 +2785,12 @@ async function generateAgent0B() {
   btn.disabled = true;
   var pathCount = buildPaths.length;
   btn.innerHTML = '<div class="spinner dark"></div><span>Building ' + pathCount + ' optimized resume' + (pathCount>1?'s':'') + '...</span>';
-  if (out) out.innerHTML = '<span class="output-placeholder streaming-cursor"></span>';
+  // Show an immediate "queued" state in every path's own output box — each
+  // one gets its own live "BUILDING" indicator once the loop below reaches it.
+  buildPaths.forEach(function(pk) {
+    var pb = document.getElementById('output_0b_' + pk);
+    if (pb) pb.innerHTML = '<span class="output-placeholder streaming-cursor">Queued\u2026</span>';
+  });
 
   // Extract path-specific context from Agent 2 (Career Capital Options Analysis) output
   function extractPathContext(pathKey) {
@@ -2872,6 +2840,7 @@ async function generateAgent0B() {
     try {
       var _obCtrl = new AbortController();
       var _obTimeout = setTimeout(function(){ _obCtrl.abort(); }, 240000); // 4 min — ample ceiling, matches Agent 1/4/8 tier for up-to-8000-token output
+      var out = document.getElementById('output_0b_' + pathKey); // this path's own output box — was previously mistakenly bound to a nonexistent 'output_0b' id, silently breaking live streaming
       var r = await fetch('https://govedge-proxy.cssceo.workers.dev', {
         method: 'POST',
         signal: _obCtrl.signal,
@@ -5724,22 +5693,6 @@ function downloadAsDoc(text, filename, title) {
   }
 }
 
-function downloadTextFile(text, filename, mimeType) {
-  filename = sanitizeDownloadFilename(filename || 'GovEdge_Document');
-  var blob = new Blob([String(text || '')], {type: mimeType || 'text/plain;charset=utf-8'});
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(function(){
-    try { document.body.removeChild(a); } catch(e) {}
-    try { URL.revokeObjectURL(url); } catch(e2) {}
-  }, 1000);
-}
-
 // ── Unemployment Job-Search Activity Log (Agent 19 / Excel) ──
 function loadSheetJs(cb) {
   if (window.XLSX) { cb(); return; }
@@ -7419,10 +7372,6 @@ function importSelectedCalEvents() {
 
 var _a7DocsInProgress = false;
 
-function getAgent7DocContainer() {
-  return document.getElementById('agent7-autodoc-suite');
-}
-
 function renderAgent7DocPanel() {
   var docs = STATE.agent7Docs || {};
   var items = [
@@ -7948,7 +7897,10 @@ var CLOUD_DOC_LABELS = {
   'agent7_impactBrief':{label:'Impact Brief', file:'Impact_Brief'},
   'agent7_boardBio':{label:'Advisory Board Bio', file:'Advisory_Board_Bio'},
   'agent7_recruiterResume':{label:'Recruiter Resume', file:'Recruiter_Resume'},
-  'agent7_networkingIntro':{label:'Networking Introduction', file:'Networking_Introduction'}
+  'agent7_networkingIntro':{label:'Networking Introduction', file:'Networking_Introduction'},
+  'resume_path1':{label:'Base Resume — Path 1', file:'Agent_3_Resume_Path1'},
+  'resume_path2':{label:'Base Resume — Path 2', file:'Agent_3_Resume_Path2'},
+  'resume_path3':{label:'Base Resume — Path 3', file:'Agent_3_Resume_Path3'}
 };
 
 async function fetchAllCloudDocs() {
