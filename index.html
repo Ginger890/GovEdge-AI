@@ -78,7 +78,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
 .dash-inline-input{border:1px solid var(--border);border-radius:3px;padding:4px 8px;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text-primary);background:var(--surface);width:100%}
 .dash-inline-input:focus{outline:none;border-color:var(--gold)}
 .dash-empty{text-align:center;padding:24px;font-size:12px;color:var(--text-muted);font-style:italic}
-/* ── MCP Connection Hub ── */
+/* ── Connection Hub ── */
 .mcp-hub{background:var(--navy);border-radius:8px;padding:16px 20px;margin-bottom:20px;border:1px solid rgba(184,151,58,0.35)}
 .mcp-hub-title{font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:rgba(232,210,138,0.5);margin-bottom:10px;display:flex;align-items:center;gap:8px}
 .mcp-hub-title::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--gold);flex-shrink:0}
@@ -990,10 +990,10 @@ function renderAgent0() {
     var saved = (STATE.savedInputs||{})['0_'+inp.id]||'';
     html += '<div class="input-section"><div class="input-label">'+inp.label+' <span class="input-required">Required</span></div>';
     if (inp.id === 'resume') {
-      // MCP #2 — Resume Upload
+      // Resume Upload
       var hasFile = !!(STATE.savedInputs||{})['0_resume'];
       html += '<div class="mcp-hub" style="margin-bottom:10px">';
-      html += '<div class="mcp-hub-title">MCP Connection #2 — Resume</div>';
+      html += '<div class="mcp-hub-title">Upload Your Resume</div>';
       html += '<div class="mcp-connections">';
       html += '<span class="mcp-conn ready" onclick="triggerResumeUpload()" title="Upload PDF or DOCX — text is extracted automatically"><span class="mcp-conn-dot"></span>📄 Upload Resume File</span>';
       if (hasFile) html += '<span class="mcp-conn active"><span class="mcp-conn-dot"></span>✓ Resume Loaded</span>';
@@ -1163,9 +1163,9 @@ function renderAgent0C() {
   var optimizedResume = STATE.savedOutputs['0b'] || '';
   var savedOut = STATE.savedOutputs['0c'] || '';
   var html = '<div class="context-panel"><span class="context-icon">◆</span><div class="context-text"><strong>Agent 4 — LinkedIn Profile Intelligence.</strong> LinkedIn plays a smaller role in GovCon than in commercial executive search — many cleared candidates intentionally keep a thinner public profile, and that is a legitimate strategic choice, not a gap. Where it does matter is with cleared staffing recruiters (ClearanceJobs, Cleared Connections, and internal recruiting teams at firms like ManTech, SAIC, Booz Allen, and Leidos), who use it as a first screen. The profile most executives have — outdated headlines, truncated About sections, and uncurated skills lists — is actively working against them there.<br><br>Why it matters: A cleared executive with a properly optimized profile — clearance level stated where legally disclosable, contract vehicle vocabulary intact — gets inbound recruiter contact from the right cleared staffing channels. A stale or over-genericized profile gets passed over in recruiter searches or, worse, buried under generic corporate language that strips out the exact terms recruiters search for.<br><br>What to do: Complete Agent 3 first. After generating, copy each section directly into LinkedIn. Configure the Open to Work and visibility settings deliberately — for many cleared candidates, a more conservative visibility setting is the right call. Do not begin any outreach until your profile is live and reflects your intended posture.</div></div>';
-  // MCP #1 — LinkedIn Smart Import
+  // LinkedIn Profile Import
   html += '<div class="li-import-panel">';
-  html += '<div class="li-import-header"><div class="li-import-logo">in</div><div><div class="li-import-title">MCP Connection #1 — LinkedIn Smart Import</div><div class="li-import-sub">LinkedIn blocks API access — structured import extracts maximum value from what you can copy</div></div></div>';
+  html += '<div class="li-import-header"><div class="li-import-logo">in</div><div><div class="li-import-title">Import Your Existing LinkedIn Profile</div><div class="li-import-sub">LinkedIn blocks API access — structured import extracts maximum value from what you can copy</div></div></div>';
   html += '<div class="li-import-body">';
   html += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;line-height:1.6">Copy each section from your LinkedIn profile and paste below. GovEdge AI™ will use this to produce a fully optimized profile — not just edits to what you have.</div>';
   var liFields = [
@@ -2472,9 +2472,9 @@ function renderAgentBody(id, ag) {
       html += '<div class="auto-pull-notice" style="margin-bottom:8px"><div class="auto-pull-icon">↳</div><div class="auto-pull-text"><strong>Career Capital Summary auto-loaded from Agent 1.</strong><div class="auto-pull-preview">'+escHtml(saved.substring(0,200))+(saved.length>200?'...':'')+'</div></div></div>';
     }
     if (inp.id === 'companylist' && id === '1') {
-      // MCP #3 — Company Auto-Research
+      // Company Auto-Research
       html += '<div class="mcp-hub" style="margin-bottom:10px">';
-      html += '<div class="mcp-hub-title">MCP Connection #3 — Company Research</div>';
+      html += '<div class="mcp-hub-title">Auto-Research Target Companies</div>';
       html += '<div class="mcp-connections">';
       html += '<span class="mcp-conn ready" onclick="triggerCompanyResearch()" title="AI researches each company automatically"><span class="mcp-conn-dot"></span>🔍 Auto-Research Companies</span>';
       html += '<span class="mcp-conn inactive" title="Live data requires LinkedIn API (not available)"><span class="mcp-conn-dot"></span>LinkedIn Company Pages</span>';
@@ -6903,7 +6903,7 @@ function saveResumePath(pathKey) {
 }
 
 // ════════════════════════════════════════════════════════
-// MCP CONNECTION #2 — RESUME FILE UPLOAD
+// Resume File Upload
 // ════════════════════════════════════════════════════════
 
 function triggerResumeUpload() {
@@ -7065,7 +7065,7 @@ async function _doDocxExtract(arrayBuffer, filename, textArea, statusEl) {
 
 
 // ════════════════════════════════════════════════════════
-// MCP CONNECTION #1 — LINKEDIN SMART IMPORT
+// LinkedIn Profile Import
 // ════════════════════════════════════════════════════════
 
 function populateLIFields() {
@@ -7108,7 +7108,7 @@ function populateLIFields() {
 
 
 // ════════════════════════════════════════════════════════
-// MCP CONNECTION #3 — COMPANY AUTO-RESEARCH
+// Company Auto-Research
 // ════════════════════════════════════════════════════════
 
 var _companyResearchInProgress = false;
@@ -7180,254 +7180,6 @@ async function triggerCompanyResearch() {
   if (btn) btn.disabled = false;
   if (spinner) spinner.style.display = 'none';
   if (label) label.textContent = '🔍 Research';
-}
-
-
-// ════════════════════════════════════════════════════════
-// MCP CONNECTION #4 — GOOGLE CALENDAR SYNC
-// ════════════════════════════════════════════════════════
-// Uses Google Calendar REST API via OAuth 2.0.
-// OAuth redirect is handled by your Cloudflare Worker.
-// The worker exchanges the code for tokens and returns them.
-
-var GCAL_CLIENT_ID = ''; // Set via prompt if not configured
-var GCAL_REDIRECT  = 'https://govedge-proxy.cssceo.workers.dev/oauth/gcal/callback';
-
-function connectGoogleCalendar() {
-  // Show configuration modal first
-  var modal = document.createElement('div');
-  modal.id = 'gcal-modal';
-  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(14,26,43,0.92);z-index:9100;display:flex;align-items:center;justify-content:center;';
-  modal.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:28px;width:100%;max-width:480px;margin:16px">'
-    + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">'
-    + '<span style="font-size:28px">📅</span>'
-    + '<div><div style="font-family:\'Cormorant Garamond\',serif;font-size:20px;font-weight:600;color:var(--navy)">MCP Connection #4 — Google Calendar</div>'
-    + '<div style="font-size:12px;color:var(--text-muted)">Read interview schedule → auto-generate prep packages</div></div>'
-    + '</div>'
-    + '<div style="background:var(--cream);border:1px solid var(--border);border-radius:6px;padding:14px;margin-bottom:16px;font-size:12px;color:var(--text-secondary);line-height:1.7">'
-    + '<strong style="color:var(--navy)">How this works:</strong><br>'
-    + '1. You authorize read-only access to your Google Calendar<br>'
-    + '2. GovEdge AI™ scans for events matching interview patterns<br>'
-    + '3. Each interview is logged to your Search Dashboard automatically<br>'
-    + '4. One click generates a prep package for each upcoming interview'
-    + '</div>'
-    + '<div style="margin-bottom:14px">'
-    + '<label style="font-size:11px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--navy);display:block;margin-bottom:5px">Google Client ID <span style="color:var(--gold-dark);font-size:10px">(Required — from Google Cloud Console)</span></label>'
-    + '<input id="gcal-client-id" type="text" class="dash-inline-input" placeholder="Your Google OAuth 2.0 Client ID" value="' + escHtml(localStorage.getItem('ge_gcal_client_id')||'') + '">'
-    + '<div style="font-size:10px;color:var(--text-muted);margin-top:4px">Create at console.cloud.google.com → Credentials → OAuth 2.0 Client IDs</div>'
-    + '</div>'
-    + '<div style="background:rgba(184,151,58,0.08);border:1px solid rgba(184,151,58,0.2);border-radius:4px;padding:10px 12px;margin-bottom:16px;font-size:11px;color:var(--text-secondary);line-height:1.6">'
-    + '<strong style="color:var(--gold-dark)">Privacy:</strong> Read-only access. Only event titles, dates, and times are read. No email content. Access can be revoked at any time in your Google Account settings.'
-    + '</div>'
-    + '<div style="display:flex;gap:8px;justify-content:flex-end">'
-    + '<button onclick="closeGcalModal()" class="btn-action">Cancel</button>'
-    + '<button onclick="startGcalOAuth()" class="btn-generate gold" style="margin-top:0"><span>Authorize Google Calendar →</span></button>'
-    + '</div></div>';
-  document.body.appendChild(modal);
-}
-
-function closeGcalModal() {
-  var m = document.getElementById('gcal-modal');
-  if (m) m.remove();
-}
-
-function startGcalOAuth() {
-  var clientId = document.getElementById('gcal-client-id') ? document.getElementById('gcal-client-id').value.trim() : '';
-  if (!clientId) {
-    showToast('Please enter your Google Client ID first.');
-    return;
-  }
-  localStorage.setItem('ge_gcal_client_id', clientId);
-  closeGcalModal();
-
-  var scopes = 'https://www.googleapis.com/auth/calendar.events.readonly';
-  var state = 'govedge_gcal_' + Date.now();
-  localStorage.setItem('ge_gcal_oauth_state', state);
-
-  var authUrl = 'https://accounts.google.com/o/oauth2/v2/auth'
-    + '?client_id=' + encodeURIComponent(clientId)
-    + '&redirect_uri=' + encodeURIComponent(GCAL_REDIRECT)
-    + '&response_type=code'
-    + '&scope=' + encodeURIComponent(scopes)
-    + '&access_type=offline'
-    + '&prompt=consent'
-    + '&state=' + encodeURIComponent(state);
-
-  // Open in popup
-  var popup = window.open(authUrl, 'gcal_oauth', 'width=520,height=620,left=200,top=100');
-  if (!popup) {
-    showToast('Popup blocked. Please allow popups for this page.');
-    return;
-  }
-
-  // Poll for callback
-  var pollInterval = setInterval(function() {
-    try {
-      if (popup.closed) {
-        clearInterval(pollInterval);
-        // Check if token was stored by the callback
-        var token = localStorage.getItem('ge_gcal_access_token');
-        if (token) {
-          STATE.mcpCalendarConnected = true;
-          saveState();
-          showToast('✓ Google Calendar connected.');
-          fetchCalendarEvents(token);
-          if (STATE.currentAgent === 'dashboard') {
-            var body = document.getElementById('agentBody');
-            if (body) { body.innerHTML = renderSearchDashboard(); attachDashboardEvents(); }
-          }
-        }
-      }
-    } catch(e) {}
-  }, 500);
-}
-
-// Called by OAuth callback page via postMessage
-window.addEventListener('message', function(event) {
-  if (event.data && event.data.type === 'gcal_oauth_success') {
-    var token = event.data.access_token;
-    if (token) {
-      localStorage.setItem('ge_gcal_access_token', token);
-      STATE.mcpCalendarConnected = true;
-      saveState();
-      showToast('✓ Google Calendar connected.');
-      fetchCalendarEvents(token);
-    }
-  }
-});
-
-async function fetchCalendarEvents(accessToken) {
-  if (!accessToken) {
-    accessToken = localStorage.getItem('ge_gcal_access_token');
-    if (!accessToken) { showToast('Calendar not connected. Click Connect first.'); return; }
-  }
-  try {
-    var now = new Date();
-    var sixMonthsOut = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000);
-    var url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events'
-      + '?timeMin=' + now.toISOString()
-      + '&timeMax=' + sixMonthsOut.toISOString()
-      + '&singleEvents=true&orderBy=startTime&maxResults=50'
-      + '&q=interview';  // Filter for interview-related events
-
-    var r = await fetch(url, {
-      headers: { 'Authorization': 'Bearer ' + accessToken }
-    });
-    if (!r.ok) {
-      if (r.status === 401) {
-        localStorage.removeItem('ge_gcal_access_token');
-        STATE.mcpCalendarConnected = false;
-        saveState();
-        showToast('Calendar access expired. Please reconnect.');
-      }
-      return;
-    }
-    var data = await r.json();
-    var events = (data.items || []).filter(function(ev) {
-      var title = (ev.summary || '').toLowerCase();
-      return title.indexOf('interview') > -1 || title.indexOf('call with') > -1
-        || title.indexOf('meet with') > -1 || title.indexOf('chat with') > -1
-        || title.indexOf('phone screen') > -1 || title.indexOf('panel') > -1
-        || title.indexOf('on-site') > -1 || title.indexOf('onsite') > -1
-        || title.indexOf('recruiter') > -1 || title.indexOf('hiring') > -1;
-    });
-
-    STATE.mcpCalendarEvents = events.map(function(ev) {
-      var dt = ev.start && (ev.start.dateTime || ev.start.date);
-      return {
-        id: ev.id,
-        title: ev.summary || '(No title)',
-        date: dt ? new Date(dt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : 'Unknown',
-        dateRaw: dt || '',
-        location: ev.location || '',
-        description: ev.description || ''
-      };
-    });
-    saveState();
-
-    if (STATE.mcpCalendarEvents.length > 0) {
-      showCalendarImportModal();
-    } else {
-      showToast('Calendar connected — no upcoming interview events found in the next 6 months.');
-    }
-  } catch(e) {
-    console.error('Calendar fetch error:', e);
-    showToast('Calendar sync error: ' + e.message);
-  }
-}
-
-function showCalendarImportModal() {
-  var events = STATE.mcpCalendarEvents || [];
-  if (!events.length) return;
-
-  var modal = document.createElement('div');
-  modal.id = 'gcal-import-modal';
-  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(14,26,43,0.92);z-index:9100;display:flex;align-items:center;justify-content:center;';
-
-  var evHtml = events.map(function(ev, idx){
-    return '<div class="cal-event-item" id="calev-'+idx+'" onclick="toggleCalEvent('+idx+')">'
-      + '<div class="cal-event-date">' + escHtml(ev.date) + '</div>'
-      + '<div><div class="cal-event-title">' + escHtml(ev.title) + '</div>'
-      + (ev.location ? '<div class="cal-event-sub">' + escHtml(ev.location) + '</div>' : '')
-      + '</div></div>';
-  }).join('');
-
-  modal.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:24px;width:100%;max-width:520px;margin:16px;max-height:80vh;display:flex;flex-direction:column">'
-    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
-    + '<div style="font-family:\'Cormorant Garamond\',serif;font-size:18px;font-weight:600;color:var(--navy)">📅 Interview Events Found — ' + events.length + '</div>'
-    + '<button onclick="closeGcalImportModal()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-muted)">×</button></div>'
-    + '<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Select events to add to your Search Dashboard. GovEdge AI™ will log each one and offer to generate a prep package.</div>'
-    + '<div style="overflow-y:auto;flex:1;margin-bottom:14px">' + evHtml + '</div>'
-    + '<div style="display:flex;gap:8px;justify-content:flex-end">'
-    + '<button onclick="closeGcalImportModal()" class="btn-action">Cancel</button>'
-    + '<button onclick="importSelectedCalEvents()" class="btn-generate gold" style="margin-top:0"><span>Add Selected to Dashboard →</span></button>'
-    + '</div></div>';
-  document.body.appendChild(modal);
-  window._selectedCalEvents = {};
-}
-
-function toggleCalEvent(idx) {
-  if (!window._selectedCalEvents) window._selectedCalEvents = {};
-  window._selectedCalEvents[idx] = !window._selectedCalEvents[idx];
-  var el = document.getElementById('calev-' + idx);
-  if (el) el.classList.toggle('selected', !!window._selectedCalEvents[idx]);
-}
-
-function closeGcalImportModal() {
-  var m = document.getElementById('gcal-import-modal');
-  if (m) m.remove();
-  window._selectedCalEvents = {};
-}
-
-function importSelectedCalEvents() {
-  var selected = window._selectedCalEvents || {};
-  var events = STATE.mcpCalendarEvents || [];
-  var d = getDash();
-  if (!d.interviews) d.interviews = [];
-  var added = 0;
-  Object.keys(selected).forEach(function(idx){
-    if (!selected[idx]) return;
-    var ev = events[parseInt(idx)];
-    if (!ev) return;
-    // Parse company from event title heuristically
-    var title = ev.title;
-    var company = title.replace(/interview/gi,'').replace(/call/gi,'').replace(/with/gi,'').trim();
-    d.interviews.push({
-      company: company || title,
-      role: (STATE.savedInputs||{})['1_targetrole'] || (STATE.savedInputs||{})['0_targetrole'] || '',
-      stage: 'Interview',
-      date: ev.date,
-      outcome: 'Upcoming — generate prep package'
-    });
-    added++;
-  });
-  saveState();
-  closeGcalImportModal();
-  showToast('✓ ' + added + ' interview' + (added===1?'':'s') + ' added to your Search Dashboard.');
-  if (STATE.currentAgent === 'dashboard') {
-    var body = document.getElementById('agentBody');
-    if (body) { body.innerHTML = renderSearchDashboard(); attachDashboardEvents(); }
-  }
 }
 
 
@@ -7739,16 +7491,6 @@ function renderSearchDashboard() {
   var cold  = companies.filter(function(c){return c.tier==='cold';}).length;
 
   var html = '<div class="dash-shell">';
-
-  // MCP Hub banner
-  var calConnected = STATE.mcpCalendarConnected;
-  html += '<div class="mcp-hub" style="margin-bottom:16px">';
-  html += '<div class="mcp-hub-title">MCP Connections — Command Center</div>';
-  html += '<div class="mcp-connections">';
-  html += '<span class="mcp-conn ' + (calConnected ? 'active' : 'ready') + '" onclick="connectGoogleCalendar()" title="Sync interviews from Google Calendar"><span class="mcp-conn-dot"></span>📅 Google Calendar ' + (calConnected ? '— Connected' : '— Connect') + '</span>';
-  html += '<span class="mcp-conn inactive" title="LinkedIn API access not publicly available"><span class="mcp-conn-dot"></span>LinkedIn Company Pages</span>';
-  html += '<span class="mcp-conn inactive" title="CRM integration available in a future release"><span class="mcp-conn-dot"></span>CRM Pipeline</span>';
-  html += '</div></div>';
 
   // Hero
   html += '<div class="dash-hero">';
