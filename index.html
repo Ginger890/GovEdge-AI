@@ -234,26 +234,24 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
     <div class="onboarding" id="onboardingScreen">
       <div class="onboarding-crest">GovEdge AI&#8482;</div>
       <div class="onboarding-sub">Federal Career Operating System</div>
-      <p class="plan-selector-title">Select your Claude plan to begin</p>
+      <p class="plan-selector-title">Choose how you'd like to work</p>
       <div class="plan-cards">
         <div class="plan-card" id="cardFree" onclick="selectPlan('free')">
           <div class="plan-card-icon">◇</div>
-          <div class="plan-card-name">Claude Free</div>
-          <div class="plan-card-desc">Using Claude on a free account</div>
+          <div class="plan-card-name">Standard</div>
+          <div class="plan-card-desc">Each agent works as its own independent step</div>
           <div class="plan-card-feature">
-            <div class="feature-row"><span class="feature-dot"></span>Each agent runs as its own session</div>
+            <div class="feature-row"><span class="feature-dot"></span>Career Capital Summary and prior agent context still load automatically</div>
             <div class="feature-row"><span class="feature-dot"></span>Save outputs between sessions</div>
-            <div class="feature-row"><span class="feature-dot"></span>Guided paste prompts included</div>
           </div>
         </div>
         <div class="plan-card" id="cardPro" onclick="selectPlan('pro')">
           <div class="plan-card-icon">◆</div>
-          <div class="plan-card-name">Claude Pro</div>
-          <div class="plan-card-desc">Using Claude with a paid subscription</div>
+          <div class="plan-card-name">Enhanced</div>
+          <div class="plan-card-desc">Adds richer conversation continuity within each agent</div>
           <div class="plan-card-feature">
-            <div class="feature-row"><span class="feature-dot"></span>Full context carried between agents</div>
-            <div class="feature-row"><span class="feature-dot"></span>Richer, longer outputs</div>
-            <div class="feature-row"><span class="feature-dot"></span>3 continuous sessions</div>
+            <div class="feature-row"><span class="feature-dot"></span>Everything in Standard, plus fuller context carried between regenerations</div>
+            <div class="feature-row"><span class="feature-dot"></span>Best if you expect to refine outputs within the same agent often</div>
           </div>
         </div>
       </div>
@@ -901,7 +899,7 @@ function startApp() {
   document.getElementById('agentScreen').style.display = 'flex';
   var b = document.getElementById('planBadge');
   b.style.display = 'inline-block';
-  b.textContent = STATE.plan === 'pro' ? '◆ Pro Plan' : '◇ Free Plan';
+  b.textContent = STATE.plan === 'pro' ? '◆ Enhanced' : '◇ Standard';
   b.className = 'plan-badge '+STATE.plan;
   document.querySelectorAll('.nav-item').forEach(function(el){el.classList.remove('locked');});
   // Navigate to last page client was on
@@ -8352,7 +8350,7 @@ function restoreSession() {
     document.getElementById('agentScreen').style.display = 'flex';
     var b = document.getElementById('planBadge');
     b.style.display = 'inline-block';
-    b.textContent = STATE.plan === 'pro' ? '◆ Pro Plan' : '◇ Free Plan';
+    b.textContent = STATE.plan === 'pro' ? '◆ Enhanced' : '◇ Standard';
     b.className = 'plan-badge '+STATE.plan;
     document.querySelectorAll('.nav-item').forEach(function(el){el.classList.remove('locked');});
     document.getElementById('cardFree').classList.toggle('selected',STATE.plan==='free');
