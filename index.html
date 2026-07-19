@@ -181,7 +181,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
       <div class="logo-tagline">Federal Career Operating System</div>
     </div>
     <div class="plan-badge-wrap">
-      <div id="planBadge" class="plan-badge" style="display:none" onclick="showOnboarding()"></div>
+      <div id="planBadge" class="plan-badge" style="display:none"></div>
       <div id="sidebar-user-row" style="display:none;align-items:center;justify-content:space-between;margin-top:8px;gap:6px">
         <span id="sidebar-email" style="font-family:'DM Sans',sans-serif;font-size:10px;color:rgba(232,210,138,0.6);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px"></span>
         <button onclick="signOut()" style="background:transparent;border:none;color:#7A8694;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:9px;text-transform:uppercase;letter-spacing:0.08em;padding:0;white-space:nowrap;flex-shrink:0">Sign Out</button>
@@ -234,29 +234,7 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
     <div class="onboarding" id="onboardingScreen">
       <div class="onboarding-crest">GovEdge AI&#8482;</div>
       <div class="onboarding-sub">Federal Career Operating System</div>
-      <p class="plan-selector-title">Choose how you'd like to work</p>
-      <div class="plan-cards">
-        <div class="plan-card" id="cardFree" onclick="selectPlan('free')">
-          <div class="plan-card-icon">◇</div>
-          <div class="plan-card-name">Standard</div>
-          <div class="plan-card-desc">Each agent works as its own independent step</div>
-          <div class="plan-card-feature">
-            <div class="feature-row"><span class="feature-dot"></span>Career Capital Summary and prior agent context still load automatically</div>
-            <div class="feature-row"><span class="feature-dot"></span>Save outputs between sessions</div>
-          </div>
-        </div>
-        <div class="plan-card" id="cardPro" onclick="selectPlan('pro')">
-          <div class="plan-card-icon">◆</div>
-          <div class="plan-card-name">Enhanced</div>
-          <div class="plan-card-desc">Adds richer conversation continuity within each agent</div>
-          <div class="plan-card-feature">
-            <div class="feature-row"><span class="feature-dot"></span>Everything in Standard, plus fuller context carried between regenerations</div>
-            <div class="feature-row"><span class="feature-dot"></span>Best if you expect to refine outputs within the same agent often</div>
-          </div>
-        </div>
-      </div>
-      <button class="btn-start" id="btnStart" onclick="startApp()" disabled>Begin Your Search</button>
-      <p style="font-size:11px;color:var(--text-muted);margin-top:16px;max-width:380px;line-height:1.6">You can switch plans at any time. Your progress is saved automatically in this browser.</p>
+      <button class="btn-start" id="btnStart" onclick="startApp()">Begin Your Search</button>
     </div>
 
     <div id="agentScreen" style="display:none;flex:1;flex-direction:column">
@@ -886,21 +864,13 @@ function loadState() {
   if (saved) { STATE = Object.assign(STATE,saved); STATE.conversationHistory = []; }
 }
 
-function selectPlan(p) {
-  STATE.plan = p;
-  document.getElementById('cardFree').classList.toggle('selected',p==='free');
-  document.getElementById('cardPro').classList.toggle('selected',p==='pro');
-  document.getElementById('btnStart').disabled = false;
-  saveState();
-}
-
 function startApp() {
+  if (!STATE.plan) { STATE.plan = 'pro'; saveState(); } // silently use the richer context-carryover behavior for everyone — no client-facing choice needed
   document.getElementById('onboardingScreen').style.display = 'none';
   document.getElementById('agentScreen').style.display = 'flex';
   var b = document.getElementById('planBadge');
-  b.style.display = 'inline-block';
-  b.textContent = STATE.plan === 'pro' ? '◆ Enhanced' : '◇ Standard';
-  b.className = 'plan-badge '+STATE.plan;
+  // badge left hidden — the Standard/Enhanced distinction is an internal
+  // implementation detail, not a client-facing choice, so nothing to show here.
   document.querySelectorAll('.nav-item').forEach(function(el){el.classList.remove('locked');});
   // Navigate to last page client was on
   var targetAgent = '0';
@@ -917,11 +887,6 @@ function startApp() {
     }
   }
   navigateTo(targetAgent);
-}
-
-function showOnboarding() {
-  document.getElementById('onboardingScreen').style.display = 'flex';
-  document.getElementById('agentScreen').style.display = 'none';
 }
 
 function navigateTo(id) {
@@ -8349,12 +8314,9 @@ function restoreSession() {
     document.getElementById('onboardingScreen').style.display = 'none';
     document.getElementById('agentScreen').style.display = 'flex';
     var b = document.getElementById('planBadge');
-    b.style.display = 'inline-block';
-    b.textContent = STATE.plan === 'pro' ? '◆ Enhanced' : '◇ Standard';
-    b.className = 'plan-badge '+STATE.plan;
+    // badge left hidden — the Standard/Enhanced distinction is an internal
+    // implementation detail, not a client-facing choice, so nothing to show here.
     document.querySelectorAll('.nav-item').forEach(function(el){el.classList.remove('locked');});
-    document.getElementById('cardFree').classList.toggle('selected',STATE.plan==='free');
-    document.getElementById('cardPro').classList.toggle('selected',STATE.plan==='pro');
     document.getElementById('btnStart').disabled = false;
     (STATE.completedAgents||[]).forEach(function(id){var n=document.getElementById('nav-'+id);if(n)n.classList.add('complete');});
     updateUserUI();
