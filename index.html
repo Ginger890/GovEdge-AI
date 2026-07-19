@@ -301,7 +301,7 @@ window.addEventListener('unhandledrejection', function(event) {
 // (which proactively fetches over the network to catch clients stuck on a
 // stale cached copy — GitHub Pages does not support custom cache-control
 // headers, so this in-app check is what actually solves that problem).
-var APP_VERSION = '3.0.3';
+var APP_VERSION = '3.0.4';
 // Main 19-agent pathway used for progress, restore order, and QA.
 // Optional/parallel agents (6e, 6f, 6g) remain available but do not distort 19-agent progress.
 var MAIN_AGENT_ORDER = ['0','0.75','0b','gc1','0c','0.5a','gc2','0.5b','1','gc3','6a','2','2.5','6h','3a','6c','6b','3b','4a','5a','4b','6d'];
@@ -490,7 +490,6 @@ async function authSignIn() {
     document.getElementById('auth-modal').remove();
     updateUserUI();
     await loadCloudData();
-    setTimeout(checkAndOfferMigration, 1500);
   } catch(e) { errEl.textContent = 'Sign in failed: '+e.message; errEl.style.display = 'block'; console.error('Auth:',e); }
 }
 
@@ -516,7 +515,6 @@ async function authSignUp() {
       document.getElementById('auth-modal').remove();
       updateUserUI();
       await loadCloudData();
-      setTimeout(checkAndOfferMigration, 1500);
     } else {
       try {
         var r2 = await fetchWithTimeout(SB_URL+'/auth/v1/token?grant_type=password',{method:'POST',headers:{'Content-Type':'application/json','apikey':SB_KEY},body:JSON.stringify({email:email,password:password})}, 20000);
@@ -571,16 +569,25 @@ async function resetGovEdgeAccountData() {
   if (confirmText !== 'RESET') { showToast('Reset cancelled — nothing was deleted.'); return; }
 
   showToast('Deleting your saved data — this may take a moment...');
+  var cloudDeleteConfirmed = false;
+  var cloudDeleteError = '';
   try {
     var token = await getValidToken();
-    if (token) {
-      await fetch(SB_URL+'/rest/v1/govedge_data?user_id=eq.'+currentUser.id,{
+    if (!token) {
+      cloudDeleteError = 'Could not verify your sign-in session.';
+    } else {
+      var delResp = await fetch(SB_URL+'/rest/v1/govedge_data?user_id=eq.'+currentUser.id,{
         method:'DELETE',
-        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token}
+        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token,'Prefer':'return=minimal'}
       });
+      if (delResp.ok) {
+        cloudDeleteConfirmed = true;
+      } else {
+        cloudDeleteError = 'Server rejected the deletion (HTTP ' + delResp.status + ').';
+      }
     }
   } catch(e) {
-    console.warn('Cloud data deletion failed:', e.message);
+    cloudDeleteError = e.message || 'Network error.';
   }
 
   // Clear every local key this app uses, regardless of prefix, so nothing stale survives
@@ -592,6 +599,16 @@ async function resetGovEdgeAccountData() {
     }
     keysToRemove.forEach(function(k){ localStorage.removeItem(k); });
   } catch(e) {}
+
+  if (!cloudDeleteConfirmed) {
+    // Never claim success when the cloud side genuinely wasn't confirmed deleted —
+    // this app fetches your cloud data back down on every load, so a silently
+    // failed cloud delete means whatever was showing before will just reappear,
+    // even though the local clear above did work and the app looks "reset."
+    window.alert('Your local browser data was cleared, but the cloud deletion could NOT be confirmed (' + cloudDeleteError + ').\n\nBecause this app re-loads your saved cloud data every time it opens, anything still on the server will reappear after this reload unless the cloud deletion is retried and succeeds.\n\nPlease check your internet connection and try Reset My Data again. If this keeps failing, sign out and back in first, then retry.');
+    setTimeout(function(){ location.reload(); }, 500);
+    return;
+  }
 
   showToast('\u2713 Your data has been reset. Reloading...');
   setTimeout(function(){ location.reload(); }, 1200);
@@ -8062,31 +8079,34 @@ function restoreSession() {
     document.getElementById('btnStart').disabled = false;
     (STATE.completedAgents||[]).forEach(function(id){var n=document.getElementById('nav-'+id);if(n)n.classList.add('complete');});
     updateUserUI();
-    // Navigate to last meaningful agent — last completed, or first incomplete
+    // Navigate to where the client actually left off. STATE.currentAgent is
+    // updated on every single navigateTo() call, so it's the direct, reliable
+    // record of their last location — not something that needs to be
+    // reconstructed by scanning for gaps in completedAgents. The previous
+    // version ignored currentAgent entirely and searched for "the first
+    // incomplete agent after the last completed one," which meant a client
+    // who had worked well past Agent 2 but whose Agent 2 completion flag
+    // never got set (e.g. they didn't check every checklist item) would be
+    // sent back to Agent 2 on every single return visit, no matter how much
+    // further they'd actually progressed.
     var targetAgent = '0';
-    if (STATE.assessmentResult || (STATE.savedOutputs && STATE.savedOutputs['0'])) {
-      var validKeys = MAIN_AGENT_ORDER.slice();
+    var validKeys = MAIN_AGENT_ORDER.slice();
+    var savedCurrent = STATE.currentAgent;
+    if (savedCurrent && (validKeys.indexOf(savedCurrent) > -1 || savedCurrent === 'dashboard')) {
+      targetAgent = savedCurrent;
+    } else if (STATE.assessmentResult || (STATE.savedOutputs && STATE.savedOutputs['0'])) {
       var completed = (STATE.completedAgents || []).filter(function(k){return k!=='dashboard';});
-      // Find the last completed agent (not the final agent in the list)
       var lastCompleted = null;
       for (var ki = validKeys.length - 1; ki >= 0; ki--) {
-        if (completed.indexOf(validKeys[ki]) > -1) {
-          lastCompleted = validKeys[ki];
-          break;
-        }
+        if (completed.indexOf(validKeys[ki]) > -1) { lastCompleted = validKeys[ki]; break; }
       }
-      // Find the first incomplete agent after the last completed one
       var firstIncomplete = null;
       if (lastCompleted) {
         var lastIdx = validKeys.indexOf(lastCompleted);
         for (var ki2 = lastIdx + 1; ki2 < validKeys.length; ki2++) {
-          if (completed.indexOf(validKeys[ki2]) === -1) {
-            firstIncomplete = validKeys[ki2];
-            break;
-          }
+          if (completed.indexOf(validKeys[ki2]) === -1) { firstIncomplete = validKeys[ki2]; break; }
         }
       }
-      // Use: first incomplete after last completed, or last completed, or Agent 1
       targetAgent = firstIncomplete || lastCompleted || '0';
     }
     navigateTo(targetAgent);
@@ -8095,122 +8115,13 @@ function restoreSession() {
   }
 }
 
-async function checkAndOfferMigration() {
-  if (!currentUser) return;
-  
-  // Check for local GovEdge state with actual content
-  var localState = null;
-  try {
-    var raw = localStorage.getItem('govedge_ai_v5') || localStorage.getItem('ge_app_state');
-    if (raw) localState = JSON.parse(raw);
-  } catch(e) {}
-  
-  if (!localState) return;
-  
-  var hasOutputs = localState.savedOutputs && Object.keys(localState.savedOutputs).length > 0;
-  var hasInputs = localState.savedInputs && Object.keys(localState.savedInputs).length > 0;
-  var hasAssessment = !!localState.assessmentResult;
-  
-  if (!hasOutputs && !hasInputs && !hasAssessment) return;
-  if (localStorage.getItem('ge_synced') === currentUser.id) return;
-  
-  // Show migration banner
-  var existing = document.getElementById('migration-banner');
-  if (existing) return;
-  
-  var itemCount = (hasOutputs ? Object.keys(localState.savedOutputs).length : 0) 
-                + (hasAssessment ? 1 : 0);
-  
-  var banner = document.createElement('div');
-  banner.id = 'migration-banner';
-  banner.style.cssText = 'position:fixed;bottom:50px;left:50%;transform:translateX(-50%);background:#1C2E45;border:1px solid rgba(184,151,58,0.6);border-radius:6px;padding:1rem 1.5rem;z-index:500;max-width:460px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.4);display:flex;align-items:flex-start;gap:1rem;';
-  banner.innerHTML = '<div style="color:#7B8A9A;font-size:1.1rem;flex-shrink:0;margin-top:2px">&#9670;</div>'
-    + '<div style="flex:1">'
-    + '<div style="font-family:Cormorant Garamond,serif;font-size:1rem;color:#C7D0D8;font-weight:600;margin-bottom:4px">Saved work found on this device</div>'
-    + '<div style="font-size:0.78rem;color:#7A8694;line-height:1.5;margin-bottom:10px">You have ' + (itemCount > 0 ? itemCount + ' saved outputs and ' : '') + 'inputs from before you created your account. Upload them now so your work is available on any device.</div>'
-    + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
-    + '<button onclick="runMigration()" id="migrate-btn" style="background:#7B8A9A;border:none;border-radius:4px;color:#0E1A2B;cursor:pointer;font-family:DM Sans,sans-serif;font-size:0.7rem;font-weight:700;letter-spacing:0.1em;padding:0.5rem 1rem;text-transform:uppercase">Upload to My Account</button>'
-    + '<button onclick="dismissMigration()" style="background:transparent;border:1px solid rgba(184,151,58,0.3);border-radius:4px;color:#7A8694;cursor:pointer;font-family:DM Sans,sans-serif;font-size:0.7rem;letter-spacing:0.08em;padding:0.5rem 1rem;text-transform:uppercase">Not Now</button>'
-    + '</div></div>';
-  document.body.appendChild(banner);
-}
-
-async function runMigration() {
-  var btn = document.getElementById('migrate-btn');
-  if (btn) { btn.textContent = 'Uploading...'; btn.disabled = true; }
-  
-  try {
-    var token = localStorage.getItem('ge_sb_token');
-    
-    // Get the full local state
-    var raw = localStorage.getItem('govedge_ai_v5') || localStorage.getItem('ge_app_state');
-    if (raw) {
-      await fetch(SB_URL + '/rest/v1/govedge_data', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SB_KEY,
-          'Authorization': 'Bearer ' + token,
-          'Prefer': 'resolution=merge-duplicates,return=minimal'
-        },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          data_key: 'app_state',
-          data_value: raw,
-          updated_at: new Date().toISOString()
-        })
-      });
-    }
-    
-    // Also migrate assessment result if present
-    if (STATE.assessmentResult) {
-      await fetch(SB_URL + '/rest/v1/govedge_data', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SB_KEY,
-          'Authorization': 'Bearer ' + token,
-          'Prefer': 'resolution=merge-duplicates,return=minimal'
-        },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          data_key: 'assessment_result',
-          data_value: STATE.assessmentResult,
-          updated_at: new Date().toISOString()
-        })
-      });
-    }
-    
-    localStorage.setItem('ge_synced', currentUser.id);
-    
-    var banner = document.getElementById('migration-banner');
-    if (banner) {
-      banner.innerHTML = '<div style="color:#2D6A4F;font-size:1.1rem;flex-shrink:0">&#10003;</div>'
-        + '<div><div style="font-family:Cormorant Garamond,serif;font-size:1rem;color:#C7D0D8;font-weight:600;margin-bottom:4px">Upload complete</div>'
-        + '<div style="font-size:0.78rem;color:#7A8694;line-height:1.5">Your work has been saved to your account and is now available on any device.</div></div>';
-      setTimeout(function() { 
-        var b = document.getElementById('migration-banner'); 
-        if (b) b.remove(); 
-      }, 4000);
-    }
-  } catch(e) {
-    var btn2 = document.getElementById('migrate-btn');
-    if (btn2) { btn2.textContent = 'Upload Failed — Try Again'; btn2.disabled = false; }
-    console.error('Migration error:', e);
-  }
-}
-
-function dismissMigration() {
-  var banner = document.getElementById('migration-banner');
-  if (banner) banner.remove();
-  // Persist the dismissal the same way a completed upload does — otherwise
-  // this prompt has no memory of "Not Now" and re-triggers on every refresh,
-  // since the local data it's checking for never goes away just by declining.
-  if (currentUser) { try { localStorage.setItem('ge_synced', currentUser.id); } catch(e) {} }
-}
-
-
-
+// Silently uploads any pre-account local data to the client's cloud account
+// on sign-in. Intentionally has no UI at all — no banner, no button, no
+// prompt — since this should never be something a client has to notice or
+// act on. Runs once per account (tracked via 'ge_synced'); if it fails, it
+// simply doesn't retry on every subsequent refresh, but the local data is
+// never deleted, so nothing is lost — it just stays local instead of also
+// being in the cloud.
 async function getValidToken() {
   var token = localStorage.getItem('ge_sb_token');
   if (!token || !currentUser) return token;
@@ -8431,7 +8342,6 @@ window.addEventListener('DOMContentLoaded', async function() {
         currentUser = {id:uid, email:vd.email||email, token:token};
         restoreSession();
         await loadCloudData();
-        setTimeout(checkAndOfferMigration, 1500);
         if (isAdmin()) setTimeout(healthCheck, 3000);
       } else {
         localStorage.removeItem('ge_sb_token'); localStorage.removeItem('ge_sb_uid'); localStorage.removeItem('ge_sb_email');
